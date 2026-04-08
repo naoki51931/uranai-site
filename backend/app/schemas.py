@@ -1,0 +1,120 @@
+from datetime import datetime
+
+from pydantic import BaseModel, EmailStr, Field
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    full_name: str = Field(min_length=1, max_length=255)
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AdminLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserProfile(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: str
+    free_readings_used: int
+    monthly_reading_limit: int
+    monthly_reading_limit_label: str
+    monthly_limit_exempt: bool
+    subscription_status: str
+    has_paid_access: bool
+    billing_enabled: bool
+
+
+class ReadingRequest(BaseModel):
+    question: str = Field(min_length=5, max_length=500)
+    spread_name: str = Field(default="three-card", pattern="^(three-card)$")
+    locale: str = Field(default="ja", min_length=2, max_length=8)
+
+
+class ReadingCard(BaseModel):
+    position: str
+    slug: str
+    name: str
+    orientation: str
+    keywords: list[str]
+    meaning: str
+    image_url: str | None = None
+
+
+class ReadingResponse(BaseModel):
+    id: int
+    spread_name: str
+    question: str
+    cards: list[ReadingCard]
+    interpretation: str
+    created_at: datetime
+    free_readings_used: int
+    has_paid_access: bool
+
+
+class PremiumReadingExplanationResponse(BaseModel):
+    explanation: str | None = None
+    cached: bool = False
+
+
+class FollowupStatusResponse(BaseModel):
+    reading_id: int
+    due_at: datetime
+    sent_at: datetime | None = None
+    responded_at: datetime | None = None
+
+
+class FollowupFeedbackResponse(BaseModel):
+    status: str
+    learning_note: str
+    llm_summary: str | None = None
+
+
+class CheckoutSessionResponse(BaseModel):
+    url: str
+
+
+class AdminProfile(BaseModel):
+    username: str
+
+
+class TarotCardAdminResponse(BaseModel):
+    slug: str
+    name: str
+    keywords: list[str]
+    meaning: str
+    image_url: str | None = None
+    has_image: bool
+
+
+class AdminOverviewResponse(BaseModel):
+    admin_username: str
+    configured_cards: int
+    total_cards: int
+    functions: list[str]
+
+
+class AdminUserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: str
+    subscription_status: str
+    free_readings_used: int
+    created_at: datetime
+
+
+class AdminUsersResponse(BaseModel):
+    total_users: int
+    users: list[AdminUserResponse]

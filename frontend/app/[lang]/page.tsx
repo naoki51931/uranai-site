@@ -1,0 +1,69 @@
+import type { Metadata } from "next";
+
+import { HomePage } from "@/components/home-page";
+import { getMessages, normalizeLocale } from "@/lib/i18n";
+import { buildLanguageAlternates, getLocaleLabel, localizedUrl } from "@/lib/site";
+import { buildLocaleJsonLd, getSeoContent } from "@/lib/seo";
+
+type Props = {
+  params: Promise<{ lang: string }>;
+};
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { lang } = await params;
+  const locale = normalizeLocale(lang);
+  const seo = getSeoContent(locale);
+  const localeLabel = getLocaleLabel(locale);
+  const openGraphLocales: Record<typeof locale, string> = {
+    ja: "ja_JP",
+    en: "en_US",
+    ru: "ru_RU",
+    de: "de_DE",
+    fr: "fr_FR",
+    it: "it_IT",
+  };
+
+  return {
+    title: `${seo.title} | Moon Arcana | ${localeLabel}`,
+    description: seo.description,
+    keywords: seo.keywords,
+    category: "tarot",
+    alternates: {
+      canonical: localizedUrl(locale),
+      languages: buildLanguageAlternates(),
+    },
+    robots: {
+      index: true,
+      follow: true,
+    },
+    openGraph: {
+      title: `${seo.title} | Moon Arcana`,
+      description: seo.description,
+      url: localizedUrl(locale),
+      locale: openGraphLocales[locale],
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${seo.title} | Moon Arcana`,
+      description: seo.description,
+    },
+  };
+}
+
+export default async function LocalizedHomePage({ params }: Props) {
+  const { lang } = await params;
+  const locale = normalizeLocale(lang);
+  const { messages } = await getMessages(locale);
+  const structuredData = buildLocaleJsonLd(locale);
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      <HomePage locale={locale} messages={messages} />
+    </>
+  );
+}
