@@ -17,3 +17,13 @@ frontend/node_modules/
 frontend/.next/
 dist/
 .env
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+dist/
+.env
+.env.*
+!.env.example
+*.log
