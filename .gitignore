@@ -10,3 +10,10 @@ node_modules/
 dist/
 coverage/
 
+
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+dist/
+.env
