@@ -21,6 +21,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     de: "de_DE",
     fr: "fr_FR",
     it: "it_IT",
+    "zh-cn": "zh_CN",
+    "zh-tw": "zh_TW",
+    hi: "hi_IN",
+    pt: "pt_PT",
+    es: "es_ES",
   };
 
   return {

@@ -1,6 +1,7 @@
 services:
   nginx:
     image: nginx:1.27-alpine
+    restart: unless-stopped
     depends_on:
       - frontend
       - backend
@@ -17,6 +18,7 @@ services:
       - certbot_webroot:/var/www/certbot
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       args:
@@ -30,6 +32,7 @@ services:
       - backend
 
   backend:
+    restart: unless-stopped
     build:
       context: ./backend
     volumes:
@@ -61,13 +64,12 @@ services:
 
   mysql:
     image: mysql:8.4
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
@@ -79,14 +81,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
 
   weaviate:
     image: semitechnologies/weaviate:1.24.12
-    ports:
-      - "8080:8080"
-      - "50051:50051"
+    restart: unless-stopped
     environment:
       QUERY_DEFAULTS_LIMIT: 20
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
@@ -99,6 +98,8 @@ services:
 
   certbot:
     image: certbot/certbot:latest
+    profiles:
+      - certbot
     volumes:
       - letsencrypt_certs:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot

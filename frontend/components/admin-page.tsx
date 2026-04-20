@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveApiAssetUrl } from "@/lib/api";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
 
@@ -232,7 +232,7 @@ export function AdminPage({ locale, messages }: Props) {
             <article className="adminCardItem" key={card.slug}>
               <div className="adminCardPreview">
                 {card.image_url ? (
-                  <img alt={card.name} className="adminCardImage" src={card.image_url} />
+                  <img alt={card.name} className="adminCardImage" src={resolveApiAssetUrl(card.image_url) ?? undefined} />
                 ) : (
                   <div className="adminCardPlaceholder">No image</div>
                 )}

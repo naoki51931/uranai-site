@@ -36,3 +36,17 @@ export async function apiFetch<T>(path: string, init?: RequestInit, token?: stri
 
   return response.json() as Promise<T>;
 }
+
+export function resolveApiAssetUrl(path: string | null): string | null {
+  if (!path) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  if (!API_BASE_URL.startsWith("http")) {
+    return path;
+  }
+
+  return new URL(path, API_BASE_URL).toString();
+}

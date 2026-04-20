@@ -27,6 +27,11 @@ export function getLocaleLabel(locale: Locale): string {
     de: "Deutsch",
     fr: "Français",
     it: "Italiano",
+    "zh-cn": "简体中文",
+    "zh-tw": "繁體中文",
+    hi: "हिन्दी",
+    pt: "Português",
+    es: "Español",
   };
   return labels[locale];
 }

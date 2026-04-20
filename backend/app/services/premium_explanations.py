@@ -16,6 +16,11 @@ def _language_name(locale: str) -> str:
         "de": "German",
         "fr": "French",
         "it": "Italian",
+        "zh-cn": "Simplified Chinese",
+        "zh-tw": "Traditional Chinese",
+        "hi": "Hindi",
+        "pt": "Portuguese",
+        "es": "Spanish",
     }.get(locale, "Japanese")
 
 

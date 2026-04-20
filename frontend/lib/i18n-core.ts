@@ -1,4 +1,4 @@
-export const SUPPORTED_LOCALES = ["ja", "en", "ru", "de", "fr", "it"] as const;
+export const SUPPORTED_LOCALES = ["ja", "en", "ru", "de", "fr", "it", "zh-cn", "zh-tw", "hi", "pt", "es"] as const;
 export const DEFAULT_LOCALE = "ja";
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -46,6 +46,15 @@ export function detectPreferredLocale(acceptLanguage: string | null | undefined)
     const primaryTag = candidate.tag.split("-")[0];
     if (isSupportedLocale(candidate.tag)) {
       return candidate.tag;
+    }
+    if (candidate.tag === "zh-hans") {
+      return "zh-cn";
+    }
+    if (candidate.tag === "zh-hant" || ["zh-hk", "zh-mo", "zh-tw"].includes(candidate.tag)) {
+      return "zh-tw";
+    }
+    if (primaryTag === "zh") {
+      return "zh-cn";
     }
     if (isSupportedLocale(primaryTag)) {
       return primaryTag;

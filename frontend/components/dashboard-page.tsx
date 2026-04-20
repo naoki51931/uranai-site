@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { ApiRequestError, apiFetch } from "@/lib/api";
+import { ApiRequestError, apiFetch, resolveApiAssetUrl } from "@/lib/api";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
 
@@ -213,6 +213,11 @@ export function DashboardPage({ locale, messages }: Props) {
       de: { past: "Vergangenheit", present: "Gegenwart", future: "Zukunft" },
       fr: { past: "Passe", present: "Present", future: "Avenir" },
       it: { past: "Passato", present: "Presente", future: "Futuro" },
+      "zh-cn": { past: "过去", present: "现在", future: "未来" },
+      "zh-tw": { past: "過去", present: "現在", future: "未來" },
+      hi: { past: "भूत", present: "वर्तमान", future: "भविष्य" },
+      pt: { past: "Passado", present: "Presente", future: "Futuro" },
+      es: { past: "Pasado", present: "Presente", future: "Futuro" },
     };
     if (labels[locale][position]) return labels[locale][position];
     return position;
@@ -226,6 +231,11 @@ export function DashboardPage({ locale, messages }: Props) {
       de: { upright: "Aufrecht", reversed: "Umgekehrt" },
       fr: { upright: "Droite", reversed: "Renversee" },
       it: { upright: "Dritta", reversed: "Rovesciata" },
+      "zh-cn": { upright: "正位", reversed: "逆位" },
+      "zh-tw": { upright: "正位", reversed: "逆位" },
+      hi: { upright: "सीधा", reversed: "उल्टा" },
+      pt: { upright: "Direita", reversed: "Invertida" },
+      es: { upright: "Derecha", reversed: "Invertida" },
     };
     return labels[locale][orientation] ?? orientation;
   };
@@ -370,7 +380,7 @@ export function DashboardPage({ locale, messages }: Props) {
                     <img
                       alt={`${card.name} ${card.orientation}`}
                       className={`readingArtwork ${card.orientation === "reversed" ? "isReversed" : ""}`}
-                      src={card.image_url}
+                      src={resolveApiAssetUrl(card.image_url) ?? undefined}
                     />
                   ) : (
                     <div className="readingArtworkPlaceholder">No image</div>

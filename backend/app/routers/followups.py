@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 
 from fastapi import APIRouter, Form, HTTPException, Response, status
 from fastapi.responses import HTMLResponse
@@ -15,6 +16,17 @@ from app.services.tarot import deserialize_cards
 
 
 router = APIRouter(prefix="/v1/followups", tags=["followups"])
+
+FOLLOWUP_HTML_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        "style-src 'unsafe-inline'; "
+        "form-action 'self'; "
+        "base-uri 'none'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 def _load_followup(token: str) -> tuple[ReadingFollowup, TarotReading]:
@@ -36,13 +48,14 @@ def _load_followup(token: str) -> tuple[ReadingFollowup, TarotReading]:
 
 
 def _feedback_form(reading: TarotReading, token: str, message: str = "") -> str:
-    notice = f"<p>{message}</p>" if message else ""
+    notice = f"<p>{escape(message)}</p>" if message else ""
     cards = deserialize_cards(reading.cards_json)
     cards_html = "".join(
         (
             "<li>"
-            f"<strong>{card['position']}</strong>: {card['name']} ({card['orientation']})"
-            f"<br />{card['meaning']}"
+            f"<strong>{escape(str(card.get('position', '')))}</strong>: "
+            f"{escape(str(card.get('name', '')))} ({escape(str(card.get('orientation', '')))})"
+            f"<br />{escape(str(card.get('meaning', '')))}"
             "</li>"
         )
         for card in cards
@@ -54,13 +67,6 @@ def _feedback_form(reading: TarotReading, token: str, message: str = "") -> str:
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>占いフィードバック</title>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-781963249"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){{dataLayer.push(arguments);}}
-      gtag('js', new Date());
-      gtag('config', 'AW-781963249');
-    </script>
     <style>
       body {{ font-family: sans-serif; background: #f4efe7; margin: 0; color: #2b241f; }}
       main {{ max-width: 760px; margin: 40px auto; padding: 24px; }}
@@ -81,13 +87,13 @@ def _feedback_form(reading: TarotReading, token: str, message: str = "") -> str:
         <h1>2週間前の占いは当たっていましたか？</h1>
         <div class="result">
           <p class="muted">占い日時: {reading.created_at.isoformat(sep=' ', timespec='minutes')} UTC</p>
-          <p class="muted">質問: {reading.question}</p>
-          <p class="muted">スプレッド: {reading.spread_name}</p>
+          <p class="muted">質問: {escape(reading.question)}</p>
+          <p class="muted">スプレッド: {escape(reading.spread_name)}</p>
           <ul>{cards_html}</ul>
-          <p>{reading.interpretation}</p>
+          <p>{escape(reading.interpretation)}</p>
         </div>
         {notice}
-        <form method="post" action="/api/v1/followups/{token}">
+        <form method="post" action="/api/v1/followups/{escape(token, quote=True)}">
           <div class="row">
             <label><input type="radio" name="was_accurate" value="yes" required /> 当たっていた</label>
             <label><input type="radio" name="was_accurate" value="no" required /> 外れていた</label>
@@ -104,12 +110,16 @@ def _feedback_form(reading: TarotReading, token: str, message: str = "") -> str:
 """
 
 
+def _followup_html_response(content: str) -> HTMLResponse:
+    return HTMLResponse(content, headers=FOLLOWUP_HTML_HEADERS)
+
+
 @router.get("/{token}", response_class=HTMLResponse)
 def followup_form(token: str):
     followup, reading = _load_followup(token)
     if followup.responded_at:
-        return HTMLResponse(_feedback_form(reading, token, "このアンケートにはすでに回答済みです。"))
-    return HTMLResponse(_feedback_form(reading, token))
+        return _followup_html_response(_feedback_form(reading, token, "このアンケートにはすでに回答済みです。"))
+    return _followup_html_response(_feedback_form(reading, token))
 
 
 @router.get("/{token}/status", response_model=FollowupStatusResponse)
@@ -143,7 +153,7 @@ def submit_followup_form(
 
         followup, reading = result
         if feedback_already_recorded(db, followup.id):
-            return HTMLResponse(_feedback_form(reading, token, "このアンケートにはすでに回答済みです。"))
+            return _followup_html_response(_feedback_form(reading, token, "このアンケートにはすでに回答済みです。"))
 
         feedback = ReadingFeedback(
             user_id=followup.user_id,
@@ -168,7 +178,7 @@ def submit_followup_form(
                 was_accurate=feedback.was_accurate,
             )
         message = "フィードバックを受け付けました。ありがとうございました。"
-        return HTMLResponse(_feedback_form(reading, token, message))
+        return _followup_html_response(_feedback_form(reading, token, message))
     finally:
         db.close()
 
