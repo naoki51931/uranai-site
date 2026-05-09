@@ -7,8 +7,20 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_admin
 from app.models import TarotCard, User
-from app.schemas import AdminOverviewResponse, AdminUserResponse, AdminUsersResponse, TarotCardAdminResponse
-from app.services.card_catalog import save_card_image, tarot_card_to_dict, tarot_sort_key
+from app.schemas import (
+    AdminDeckAssetsResponse,
+    AdminOverviewResponse,
+    AdminUserResponse,
+    AdminUsersResponse,
+    TarotCardAdminResponse,
+)
+from app.services.card_catalog import (
+    get_card_back_image_url,
+    save_card_back_image,
+    save_card_image,
+    tarot_card_to_dict,
+    tarot_sort_key,
+)
 
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -26,8 +38,18 @@ def admin_overview(_: str = Depends(get_current_admin), db: Session = Depends(ge
             "管理ログインを .env の ADMIN_USERNAME / ADMIN_PASSWORD で制御",
             "全カードの画像登録状況を一覧で確認",
             "各カード画像をアップロードして即時プレビュー",
+            "共通のカード裏面画像をアップロードして即時プレビュー",
             "占い画面で正位置・逆位置の向きに応じて同じ画像を回転表示",
         ],
+    )
+
+
+@router.get("/deck-assets", response_model=AdminDeckAssetsResponse)
+def deck_assets(_: str = Depends(get_current_admin)):
+    card_back_image_url = get_card_back_image_url()
+    return AdminDeckAssetsResponse(
+        card_back_image_url=card_back_image_url,
+        has_card_back_image=bool(card_back_image_url),
     )
 
 
@@ -87,4 +109,24 @@ def upload_card_image(
     return TarotCardAdminResponse(
         **tarot_card_to_dict(card),
         has_image=bool(card.image_path),
+    )
+
+
+@router.post("/deck-assets/card-back-image", response_model=AdminDeckAssetsResponse)
+def upload_card_back_image(
+    image: UploadFile = File(...),
+    _: str = Depends(get_current_admin),
+):
+    if not (image.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image file is required")
+
+    try:
+        save_card_back_image(image)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    card_back_image_url = get_card_back_image_url()
+    return AdminDeckAssetsResponse(
+        card_back_image_url=card_back_image_url,
+        has_card_back_image=bool(card_back_image_url),
     )

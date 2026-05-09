@@ -5,6 +5,7 @@ FastAPI + Next.js + Nginx + MySQL + Redis + Weaviate で構成した、タロッ
 実装済み:
 
 - メールアドレス / パスワードによるユーザー登録とログイン
+- メールリンクによるパスワード再設定
 - JWT 認証
 - タロット占い API
 - 1ユーザーあたり無料 30 回までの利用制限
@@ -19,8 +20,9 @@ FastAPI + Next.js + Nginx + MySQL + Redis + Weaviate で構成した、タロッ
 
 1. `.env.example` を `.env` にコピーして値を設定
 2. 課金機能を使う場合だけ `BILLING_ENABLED=1` にして Stripe 関連の値を設定
-3. フォローアップメールを使う場合は SMTP 設定を `.env` に入れる
+3. フォローアップメールやパスワード再設定メールを使う場合は SMTP 設定を `.env` に入れる
 4. LLM 要約も使う場合は `OPENAI_API_KEY` と `OPENAI_MODEL` を設定
+5. プレミアム解説だけ別モデルにしたい場合は `AI_MODEL` を設定
 5. 起動
 
 ```bash
@@ -58,10 +60,44 @@ stripe listen --forward-to localhost/api/v1/billing/webhook
 
 表示された署名シークレットを `.env` の `STRIPE_WEBHOOK_SECRET` に設定してください。
 
+## MySQL バックアップを毎日 S3 に保存
+
+このリポジトリには、MySQL のダンプを gzip して S3 に送るスクリプトを同梱しています。
+
+1. `.env` に次を設定
+
+```bash
+BACKUP_S3_BUCKET=your-bucket-name
+BACKUP_S3_PREFIX=uranai-site-ai/mysql
+BACKUP_LOCAL_DIR=/home/ubuntu/db-backups/uranai-site-ai
+BACKUP_LOCAL_RETENTION_DAYS=7
+BACKUP_CRON_SCHEDULE=0 2 * * *
+```
+
+2. AWS 認証を設定
+   EC2 の場合は S3 へ書き込める IAM Role を推奨します。ローカル資格情報を使う場合は `aws configure` で設定してください。
+
+3. 手動実行で確認
+
+```bash
+./scripts/backup_mysql_to_s3.sh
+```
+
+4. 毎日 1 回の cron を登録
+
+```bash
+./scripts/install_backup_cron.sh
+```
+
+`backup_mysql_to_s3.sh` は稼働中の `mysql` コンテナに対して `mysqldump` を実行し、`aws s3 cp` で S3 にアップロードします。
+cron のログは `logs/backup.log` に出力されます。
+
 ## 主なエンドポイント
 
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
+- `POST /api/v1/auth/password-reset/request`
+- `POST /api/v1/auth/password-reset/confirm`
 - `GET /api/v1/auth/me`
 - `POST /api/v1/readings`
 - `GET /api/v1/readings/latest`
@@ -85,6 +121,7 @@ stripe listen --forward-to localhost/api/v1/billing/webhook
 - `SMTP_HOST` と `SMTP_FROM_EMAIL` が設定されている場合のみメール送信します
 - メール内リンクのフォームで、当たっていたかと実際の出来事を回答できます
 - 回答内容は学習メモとして保存され、`OPENAI_API_KEY` と `OPENAI_MODEL` がある場合は LLM 要約も保存します
+- プレミアム解説は `AI_MODEL` があればそれを優先し、未設定なら `OPENAI_MODEL` を使います
 - 占い生成時は `allow_learning=true` の回答だけを集計し、当たりやすい傾向を解釈ロジックへ反映します
 - 学習集計は `GET /api/v1/learning/insights` で確認できます
 - 学習許可済みフィードバックは Weaviate にも保存され、新しい質問時に近い過去事例をベクトル検索して補助コンテキストに使います

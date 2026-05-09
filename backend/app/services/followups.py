@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import smtplib
 from datetime import datetime, timedelta
-from email.message import EmailMessage
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -12,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import ReadingFeedback, ReadingFollowup, TarotReading, User
+from app.services.email import is_email_configured, send_email
 from app.services.tarot import deserialize_cards
 
 
@@ -56,8 +55,7 @@ def render_followup_email(reading: TarotReading, token: str) -> str:
 
 
 def send_due_followups_once() -> int:
-    settings = get_settings()
-    if not settings.smtp_host or not settings.smtp_from_email:
+    if not is_email_configured():
         return 0
 
     db = SessionLocal()
@@ -73,7 +71,7 @@ def send_due_followups_once() -> int:
         )
         for followup, reading in due_followups:
             try:
-                _send_email(
+                send_email(
                     recipient=followup.recipient_email,
                     subject="2週間前の占い結果はいかがでしたか？",
                     body=render_followup_email(reading, followup.token),
@@ -88,22 +86,6 @@ def send_due_followups_once() -> int:
         return sent_count
     finally:
         db.close()
-
-
-def _send_email(*, recipient: str, subject: str, body: str) -> None:
-    settings = get_settings()
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = settings.smtp_from_email
-    message["To"] = recipient
-    message.set_content(body)
-
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        if settings.smtp_use_tls:
-            smtp.starttls()
-        if settings.smtp_username:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
 
 
 async def followup_worker() -> None:

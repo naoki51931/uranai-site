@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { PreDrawAnimation } from "@/components/tarot/pre-draw-animation";
 import { ApiRequestError, apiFetch, resolveApiAssetUrl } from "@/lib/api";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
+import { localizedUrl } from "@/lib/site";
 
 type Profile = {
   id: number;
@@ -50,27 +52,116 @@ type PremiumExplanationResponse = {
   cached: boolean;
 };
 
-const PREMIUM_MODELS = ["gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"] as const;
+type DeckAssetsResponse = {
+  card_back_image_url: string | null;
+  has_card_back_image: boolean;
+};
+
+type DrawState = "idle" | "preparing" | "revealing" | "completed";
+
+const PREMIUM_MODELS = ["default", "google/gemini-3-flash-preview", "gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano"] as const;
 const PREMIUM_MODEL_STORAGE_KEY = "premium_explanation_model";
+const PREPARING_DELAY_MS = 4200;
+const PREPARING_DELAY_REDUCED_MS = 450;
 
 type Props = {
   locale: Locale;
   messages: Messages;
 };
 
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function truncateText(value: string, maxLength: number) {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function renderInlinePremiumText(text: string) {
+  const segments = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return segments.map((segment, index) => {
+    if (segment.startsWith("**") && segment.endsWith("**")) {
+      return <strong key={`${segment}-${index}`}>{segment.slice(2, -2)}</strong>;
+    }
+    return <Fragment key={`${segment}-${index}`}>{segment}</Fragment>;
+  });
+}
+
+function renderPremiumExplanation(text: string) {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="premiumExplanationBody">
+      {blocks.map((block, blockIndex) => {
+        const heading = block.match(/^#{1,3}\s+(.+)$/);
+        if (heading) {
+          return <h4 key={`premium-heading-${blockIndex}`}>{renderInlinePremiumText(heading[1])}</h4>;
+        }
+
+        const lines = block
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+        return (
+          <p key={`premium-paragraph-${blockIndex}`}>
+            {lines.map((line, lineIndex) => (
+              <Fragment key={`premium-line-${blockIndex}-${lineIndex}`}>
+                {lineIndex > 0 ? <br /> : null}
+                {renderInlinePremiumText(line)}
+              </Fragment>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function premiumModelLabel(model: (typeof PREMIUM_MODELS)[number]) {
+  if (model === "default") {
+    return "server default";
+  }
+  if (model === "google/gemini-3-flash-preview") {
+    return "Gemini 3 Flash Preview";
+  }
+  return model;
+}
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
 export function DashboardPage({ locale, messages }: Props) {
   const router = useRouter();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [token, setToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [question, setQuestion] = useState("");
+  const [activeQuestion, setActiveQuestion] = useState("");
   const [reading, setReading] = useState<Reading | null>(null);
+  const [animatingReading, setAnimatingReading] = useState<Reading | null>(null);
   const [history, setHistory] = useState<Reading[]>([]);
+  const [cardBackImageUrl, setCardBackImageUrl] = useState<string | null>(null);
+  const [drawState, setDrawState] = useState<DrawState>("idle");
   const [premiumExplanations, setPremiumExplanations] = useState<Record<string, string | null>>({});
   const [premiumLoading, setPremiumLoading] = useState(false);
-  const [premiumModel, setPremiumModel] = useState<(typeof PREMIUM_MODELS)[number]>("gpt-4.1-mini");
+  const [premiumModel, setPremiumModel] = useState<(typeof PREMIUM_MODELS)[number]>("default");
   const [error, setError] = useState("");
   const [premiumError, setPremiumError] = useState("");
-  const [loading, setLoading] = useState(false);
 
   const readingsPath = `/v1/readings?locale=${encodeURIComponent(locale)}`;
 
@@ -101,10 +192,21 @@ export function DashboardPage({ locale, messages }: Props) {
     if (!token) {
       return;
     }
+    void apiFetch<DeckAssetsResponse>("/v1/readings/deck-assets", undefined, token)
+      .then((assets) => setCardBackImageUrl(assets.card_back_image_url))
+      .catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
     void apiFetch<Reading[]>(readingsPath, undefined, token)
       .then((readings) => {
         setHistory(readings);
         setReading((current) => current ?? readings[0] ?? null);
+        setActiveQuestion((current) => current || readings[0]?.question || "");
+        setDrawState((current) => (current === "idle" && readings[0] ? "completed" : current));
       })
       .catch(() => undefined);
   }, [readingsPath, token]);
@@ -131,10 +233,10 @@ export function DashboardPage({ locale, messages }: Props) {
   }, [locale, messages, premiumExplanations, premiumModel, profile?.has_paid_access, reading, token]);
 
   const apiFetchPremiumExplanation = async (readingId: number, model: (typeof PREMIUM_MODELS)[number], forceRefresh = false) => {
-    const query = new URLSearchParams({
-      locale,
-      model,
-    });
+    const query = new URLSearchParams({ locale });
+    if (model !== "default") {
+      query.set("model", model);
+    }
     if (forceRefresh) {
       query.set("force_refresh", "true");
     }
@@ -149,44 +251,67 @@ export function DashboardPage({ locale, messages }: Props) {
     setProfile(nextProfile);
   };
 
-  const refreshReadings = async () => {
+  const refreshReadings = async (latestReadingId?: number) => {
     if (!token) {
       return;
     }
     const readings = await apiFetch<Reading[]>(readingsPath, undefined, token);
     setHistory(readings);
-    setReading(readings[0] ?? null);
+    if (latestReadingId) {
+      const latestReading = readings.find((item) => item.id === latestReadingId);
+      if (latestReading) {
+        setReading(latestReading);
+        return;
+      }
+    }
+    setReading((current) => {
+      if (!current) {
+        return readings[0] ?? null;
+      }
+      return readings.find((item) => item.id === current.id) ?? readings[0] ?? null;
+    });
   };
 
   const createReading = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!token) {
+    if (!token || drawState === "preparing" || drawState === "revealing") {
       return;
     }
-    setLoading(true);
+
+    const nextQuestion = question.trim();
+    if (!nextQuestion) {
+      return;
+    }
+
+    setDrawState("preparing");
+    setActiveQuestion(nextQuestion);
     setError("");
 
     try {
-      const result = await apiFetch<Reading>(
-        "/v1/readings",
-        {
-          method: "POST",
-          body: JSON.stringify({ question, spread_name: "three-card", locale }),
-        },
-        token,
-      );
+      const [result] = await Promise.all([
+        apiFetch<Reading>(
+          "/v1/readings",
+          {
+            method: "POST",
+            body: JSON.stringify({ question: nextQuestion, spread_name: "three-card", locale }),
+          },
+          token,
+        ),
+        wait(prefersReducedMotion ? PREPARING_DELAY_REDUCED_MS : PREPARING_DELAY_MS),
+      ]);
+
       setQuestion("");
-      await refreshProfile();
-      await refreshReadings();
+      setAnimatingReading(result);
       setReading(result);
+      setDrawState("revealing");
+      await Promise.all([refreshProfile(), refreshReadings(result.id)]);
     } catch (err) {
+      setDrawState(reading ? "completed" : "idle");
       if (err instanceof ApiRequestError && err.status === 402 && profile?.billing_enabled) {
         await startCheckout();
         return;
       }
       setError(err instanceof Error ? err.message : t(messages, "dashboard.error", "Reading failed"));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -219,8 +344,7 @@ export function DashboardPage({ locale, messages }: Props) {
       pt: { past: "Passado", present: "Presente", future: "Futuro" },
       es: { past: "Pasado", present: "Presente", future: "Futuro" },
     };
-    if (labels[locale][position]) return labels[locale][position];
-    return position;
+    return labels[locale][position] ?? position;
   };
 
   const orientationLabel = (orientation: string) => {
@@ -238,6 +362,56 @@ export function DashboardPage({ locale, messages }: Props) {
       es: { upright: "Derecha", reversed: "Invertida" },
     };
     return labels[locale][orientation] ?? orientation;
+  };
+
+  const readingIntro = (() => {
+    if (!activeQuestion) {
+      return "";
+    }
+    if (locale === "en") {
+      return `For the question "${activeQuestion}", the cards show the following flow.`;
+    }
+    return `「${activeQuestion}」という問いに対して、カードは次の流れを示しています。`;
+  })();
+
+  const shareButtonLabel = locale === "en" ? "Share on X" : "Xで共有";
+  const shareUrl = localizedUrl(locale);
+  const shareText = reading
+    ? (() => {
+        const cardsSummary = reading.cards
+          .map((card) => `${positionLabel(card.position)}: ${card.name} (${orientationLabel(card.orientation)})`)
+          .join(" / ");
+        const interpretation = truncateText(reading.interpretation.replace(/\s+/g, " ").trim(), 100);
+
+        if (locale === "en") {
+          return [
+            `My tarot reading for "${reading.question}"`,
+            cardsSummary,
+            interpretation,
+            "#MoonArcana #TarotReading",
+          ].join("\n");
+        }
+
+        return [
+          `「${reading.question}」の占い結果`,
+          cardsSummary,
+          interpretation,
+          "#MoonArcana #タロット占い",
+        ].join("\n");
+      })()
+    : "";
+
+  const shareOnX = () => {
+    if (!reading) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      text: shareText,
+      url: shareUrl,
+    });
+
+    window.open(`https://x.com/intent/post?${params.toString()}`, "_blank", "noopener,noreferrer");
   };
 
   const startCheckout = async () => {
@@ -285,8 +459,24 @@ export function DashboardPage({ locale, messages }: Props) {
     }
   };
 
+  const drawDisabled = drawState === "preparing" || drawState === "revealing";
+  const handleAnimationFinished = useCallback(() => {
+    setAnimatingReading(null);
+    setDrawState("completed");
+  }, []);
+
   return (
     <main className="shell dashboard">
+      <PreDrawAnimation
+        cardBackImageUrl={cardBackImageUrl}
+        cards={animatingReading?.cards}
+        onFinished={handleAnimationFinished}
+        orientationLabel={orientationLabel}
+        phase={drawState === "preparing" || drawState === "revealing" ? drawState : "completed"}
+        positionLabel={positionLabel}
+        question={activeQuestion}
+      />
+
       <div className="nav">
         <h1>{t(messages, "dashboard.title", "Dashboard")}</h1>
         <button className="ghostButton" onClick={logout} type="button">
@@ -322,6 +512,29 @@ export function DashboardPage({ locale, messages }: Props) {
       </div>
 
       <div className="panel readingPanel">
+        <h2>{t(messages, "dashboard.settings_title", "AI Settings")}</h2>
+        <p>
+          {t(
+            messages,
+            "dashboard.settings_copy",
+            "Choose the AI model used for premium explanations on your dashboard. Gemini can be selected here.",
+          )}
+        </p>
+        <div className="premiumModelRow">
+          <label className="premiumModelField" htmlFor="dashboard-ai-model">
+            <span>{t(messages, "dashboard.premium_model", "Model")}</span>
+            <select id="dashboard-ai-model" onChange={handlePremiumModelChange} value={premiumModel}>
+              {PREMIUM_MODELS.map((model) => (
+                <option key={model} value={model}>
+                  {premiumModelLabel(model)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="panel readingPanel">
         <h2>{t(messages, "dashboard.reading.title", "Tarot Reading")}</h2>
         <p>{t(messages, "dashboard.reading.copy", "Enter your question to run a three-card reading.")}</p>
         <form onSubmit={createReading}>
@@ -342,8 +555,8 @@ export function DashboardPage({ locale, messages }: Props) {
           </div>
           {error ? <div className="error">{error}</div> : null}
           <div className="ctaRow">
-            <button className="button" disabled={loading} type="submit">
-              {loading ? t(messages, "dashboard.loading", "Reading...") : t(messages, "dashboard.submit", "Read")}
+            <button className="button" disabled={drawDisabled} type="submit">
+              {drawDisabled ? t(messages, "dashboard.loading", "Reading...") : t(messages, "dashboard.submit", "Read")}
             </button>
             <button className="ghostButton" onClick={() => router.push(localizePath(locale, "/translations"))} type="button">
               {t(messages, "dashboard.translations", "Translations")}
@@ -365,12 +578,13 @@ export function DashboardPage({ locale, messages }: Props) {
         </form>
       </div>
 
-      {reading ? (
+      {reading && drawState === "completed" ? (
         <div className="panel readingPanel">
           <h2>{t(messages, "dashboard.latest", "Latest Result")}</h2>
           <p>
             {t(messages, "dashboard.read_at", "Read at")}: {formatTimestamp(reading.created_at)}
           </p>
+          {readingIntro ? <p className="readingLead">{readingIntro}</p> : null}
           <div className="readingCards">
             {reading.cards.map((card) => (
               <div className="readingCard" key={`${reading.id}-${card.name}`}>
@@ -394,16 +608,21 @@ export function DashboardPage({ locale, messages }: Props) {
             ))}
           </div>
           <p>{reading.interpretation}</p>
+          <div className="shareRow">
+            <button className="ghostButton shareButton" onClick={shareOnX} type="button">
+              {shareButtonLabel}
+            </button>
+          </div>
           {profile?.has_paid_access ? (
             <div className="premiumExplanation">
-              <h3>{t(messages, "dashboard.premium_title", "ChatGPT premium insight")}</h3>
+              <h3>{t(messages, "dashboard.premium_title", "Premium insight")}</h3>
               <div className="premiumModelRow">
                 <label className="premiumModelField" htmlFor="premium-model">
                   <span>{t(messages, "dashboard.premium_model", "Model")}</span>
                   <select id="premium-model" onChange={handlePremiumModelChange} value={premiumModel}>
                     {PREMIUM_MODELS.map((model) => (
                       <option key={model} value={model}>
-                        {model}
+                        {premiumModelLabel(model)}
                       </option>
                     ))}
                   </select>
@@ -412,11 +631,11 @@ export function DashboardPage({ locale, messages }: Props) {
                   {t(messages, "dashboard.premium_refresh", "Refresh")}
                 </button>
               </div>
-              {premiumLoading && reading ? (
-                <p>{t(messages, "dashboard.premium_loading", "Loading premium explanation...")}</p>
-              ) : null}
+              {premiumLoading ? <p>{t(messages, "dashboard.premium_loading", "Loading premium explanation...")}</p> : null}
               {premiumError ? <p className="error">{premiumError}</p> : null}
-              {premiumExplanations[`${reading.id}:${premiumModel}`] ? <p>{premiumExplanations[`${reading.id}:${premiumModel}`]}</p> : null}
+              {premiumExplanations[`${reading.id}:${premiumModel}`]
+                ? renderPremiumExplanation(premiumExplanations[`${reading.id}:${premiumModel}`] ?? "")
+                : null}
               {!premiumLoading && !premiumError && premiumExplanations[`${reading.id}:${premiumModel}`] === null ? (
                 <p>{t(messages, "dashboard.premium_unavailable", "Premium explanation is currently unavailable.")}</p>
               ) : null}
@@ -432,7 +651,18 @@ export function DashboardPage({ locale, messages }: Props) {
         ) : (
           <div className="historyList">
             {history.map((item) => (
-              <button className="historyItem" key={item.id} onClick={() => setReading(item)} type="button">
+              <button
+                className="historyItem"
+                key={item.id}
+                onClick={() => {
+                  setAnimatingReading(null);
+                  setReading(item);
+                  setActiveQuestion(item.question);
+                  setDrawState("completed");
+                  setError("");
+                }}
+                type="button"
+              >
                 <strong>{formatTimestamp(item.created_at)}</strong>
                 <span>{item.question}</span>
               </button>

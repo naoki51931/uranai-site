@@ -19,6 +19,7 @@ PUBLIC_UPLOAD_PREFIX = "/uploads/cards"
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 MAX_IMAGE_DIMENSION = 1600
 CARD_ORDER = {card["slug"]: index for index, card in enumerate(TAROT_CARDS)}
+CARD_BACK_BASENAME = "card-back"
 
 
 def ensure_card_upload_dir() -> None:
@@ -80,6 +81,12 @@ def build_public_image_url(image_path: str | None) -> str | None:
     return f"{PUBLIC_UPLOAD_PREFIX}/{image_path}"
 
 
+def get_card_back_image_url() -> str | None:
+    for existing_file in sorted(CARD_UPLOAD_DIR.glob(f"{CARD_BACK_BASENAME}.*")):
+        return build_public_image_url(existing_file.name)
+    return None
+
+
 def _resize_image_bytes(content: bytes, extension: str) -> bytes:
     if extension == ".gif":
         return content
@@ -129,3 +136,20 @@ def save_card_image(card: TarotCard, image: UploadFile) -> TarotCard:
     card.image_path = filename
     card.updated_at = datetime.utcnow()
     return card
+
+
+def save_card_back_image(image: UploadFile) -> str:
+    ensure_card_upload_dir()
+    extension = Path(image.filename or "").suffix.lower()
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_IMAGE_EXTENSIONS))
+        raise ValueError(f"Unsupported image format. Allowed: {allowed}")
+
+    for existing_file in CARD_UPLOAD_DIR.glob(f"{CARD_BACK_BASENAME}.*"):
+        existing_file.unlink(missing_ok=True)
+
+    filename = f"{CARD_BACK_BASENAME}{extension}"
+    destination = CARD_UPLOAD_DIR / filename
+    content = image.file.read()
+    destination.write_bytes(_resize_image_bytes(content, extension))
+    return filename

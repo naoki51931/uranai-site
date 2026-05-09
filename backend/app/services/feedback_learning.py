@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
-from urllib import error, request
-
 from app.config import get_settings
 from app.models import ReadingFeedback, TarotReading
+from app.services.llm_client import generate_text
 
 
 def build_learning_note(reading: TarotReading, feedback: ReadingFeedback) -> str:
@@ -34,30 +32,9 @@ def maybe_generate_llm_summary(reading: TarotReading, feedback: ReadingFeedback)
         f"的中したか: {'はい' if feedback.was_accurate else 'いいえ'}\n"
         f"ユーザー結果: {feedback.outcome_summary or 'なし'}\n"
     )
-    payload = {
-        "model": settings.openai_model,
-        "input": prompt,
-    }
-    req = request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {settings.openai_api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+    return generate_text(
+        model=settings.openai_model,
+        prompt=prompt,
+        timeout=15,
+        max_output_tokens=220,
     )
-    try:
-        with request.urlopen(req, timeout=15) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except (error.URLError, TimeoutError, ValueError):
-        return None
-
-    output = body.get("output", [])
-    parts: list[str] = []
-    for item in output:
-        for content in item.get("content", []):
-            if content.get("type") == "output_text":
-                parts.append(content.get("text", ""))
-    text = "\n".join(part.strip() for part in parts if part.strip()).strip()
-    return text or None

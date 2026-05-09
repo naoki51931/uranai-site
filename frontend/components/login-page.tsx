@@ -78,6 +78,9 @@ export function LoginPage({ locale, messages }: Props) {
               />
               {t(messages, "login.show_password", "Show password")}
             </label>
+            <Link href={localizePath(locale, "/password-reset")}>
+              {t(messages, "login.forgot_password", "Forgot your password?")}
+            </Link>
           </div>
           {error ? <div className="error">{error}</div> : null}
           <button className="button" disabled={loading} type="submit">

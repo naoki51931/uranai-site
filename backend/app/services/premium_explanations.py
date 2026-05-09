@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
-from urllib import error, request
-
 from app.config import get_settings
+from app.services.llm_client import generate_text
 
-ALLOWED_PREMIUM_MODELS = ("gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1")
+ALLOWED_PREMIUM_MODELS = ("default", "gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1", "google/gemini-2.5-flash")
 
 
 def _language_name(locale: str) -> str:
@@ -28,8 +26,13 @@ def get_premium_model(selected_model: str | None = None) -> str | None:
     settings = get_settings()
     if not settings.openai_api_key:
         return None
-    model = selected_model or settings.openai_model
-    if model not in ALLOWED_PREMIUM_MODELS:
+    requested_model = (selected_model or "").strip()
+    default_model = settings.ai_model.strip() or settings.openai_model.strip()
+    model = requested_model if requested_model and requested_model != "default" else default_model
+    if not model:
+        return None
+    normalized = model.lower()
+    if model not in ALLOWED_PREMIUM_MODELS and "gemini" not in normalized:
         return None
     return model
 
@@ -41,7 +44,6 @@ def generate_premium_explanation(
     locale: str,
     selected_model: str | None = None,
 ) -> str | None:
-    settings = get_settings()
     model = get_premium_model(selected_model)
     if not model:
         return None
@@ -52,38 +54,20 @@ def generate_premium_explanation(
     )
     prompt = (
         "You are an expert tarot reader writing a premium add-on explanation for a paid user.\n"
-        f"Write in { _language_name(locale) }.\n"
-        "Keep it to 2 short paragraphs.\n"
+        f"Write in {_language_name(locale)}.\n"
+        "Target length: about 900 to 1100 characters in Japanese, or an equivalent substantial length in the target language.\n"
+        "Use markdown-style formatting with a heading, blank lines between sections, and **bold** for important phrases.\n"
+        "Write 3 to 5 short sections, not a wall of text.\n"
         "Do not repeat the base interpretation verbatim.\n"
-        "Focus on practical nuance, emotional subtext, and one concrete next step.\n\n"
+        "Focus on practical nuance, emotional subtext, risks and opportunities, and one concrete next step.\n"
+        "Make the final section an action plan for the next 24 to 72 hours.\n\n"
         f"Question: {question}\n"
         f"Base interpretation: {interpretation}\n"
         f"Cards:\n{card_lines}\n"
     )
-    payload = {
-        "model": model,
-        "input": prompt,
-    }
-    req = request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {settings.openai_api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+    return generate_text(
+        model=model,
+        prompt=prompt,
+        timeout=20,
+        max_output_tokens=900,
     )
-    try:
-        with request.urlopen(req, timeout=20) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except (error.URLError, TimeoutError, ValueError):
-        return None
-
-    output = body.get("output", [])
-    parts: list[str] = []
-    for item in output:
-        for content in item.get("content", []):
-            if content.get("type") == "output_text":
-                parts.append(content.get("text", ""))
-    text = "\n".join(part.strip() for part in parts if part.strip()).strip()
-    return text or None

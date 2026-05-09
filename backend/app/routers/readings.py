@@ -11,9 +11,9 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user, has_paid_access, is_billing_enabled
 from app.models import TarotCard, TarotReading, User
-from app.schemas import PremiumReadingExplanationResponse, ReadingRequest, ReadingResponse
+from app.schemas import AdminDeckAssetsResponse, PremiumReadingExplanationResponse, ReadingRequest, ReadingResponse
 from app.runtime import weaviate_store
-from app.services.card_catalog import build_public_image_url, tarot_card_to_dict, tarot_sort_key
+from app.services.card_catalog import build_public_image_url, get_card_back_image_url, tarot_card_to_dict, tarot_sort_key
 from app.services.followups import schedule_followup
 from app.services.learning import build_generation_guidance
 from app.services.premium_explanations import ALLOWED_PREMIUM_MODELS, generate_premium_explanation, get_premium_model
@@ -28,6 +28,16 @@ from app.services.tarot_localization import build_interpretation, localize_cards
 
 router = APIRouter(prefix="/v1/readings", tags=["readings"])
 redis_client = redis.Redis.from_url(get_settings().redis_url, decode_responses=True)
+
+
+@router.get("/deck-assets", response_model=AdminDeckAssetsResponse)
+def reading_deck_assets(current_user: User = Depends(get_current_user)):
+    del current_user
+    card_back_image_url = get_card_back_image_url()
+    return AdminDeckAssetsResponse(
+        card_back_image_url=card_back_image_url,
+        has_card_back_image=bool(card_back_image_url),
+    )
 
 
 def _premium_cache_key(reading_id: int, locale: str, model: str) -> str:

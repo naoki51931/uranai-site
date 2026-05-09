@@ -27,6 +27,11 @@ type AdminCard = {
   has_image: boolean;
 };
 
+type AdminDeckAssets = {
+  card_back_image_url: string | null;
+  has_card_back_image: boolean;
+};
+
 type AdminUser = {
   id: number;
   email: string;
@@ -51,10 +56,13 @@ export function AdminPage({ locale, messages }: Props) {
   const [token, setToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [deckAssets, setDeckAssets] = useState<AdminDeckAssets | null>(null);
   const [cards, setCards] = useState<AdminCard[]>([]);
   const [usersResponse, setUsersResponse] = useState<AdminUsersResponse | null>(null);
   const [pendingFiles, setPendingFiles] = useState<Record<string, File | null>>({});
+  const [pendingCardBackFile, setPendingCardBackFile] = useState<File | null>(null);
   const [uploadingSlug, setUploadingSlug] = useState<string | null>(null);
+  const [uploadingCardBack, setUploadingCardBack] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -75,12 +83,14 @@ export function AdminPage({ locale, messages }: Props) {
     void Promise.all([
       apiFetch<AdminProfile>("/v1/auth/admin/me", undefined, token),
       apiFetch<AdminOverview>("/v1/admin/overview", undefined, token),
+      apiFetch<AdminDeckAssets>("/v1/admin/deck-assets", undefined, token),
       apiFetch<AdminCard[]>("/v1/admin/cards", undefined, token),
       apiFetch<AdminUsersResponse>("/v1/admin/users", undefined, token),
     ])
-      .then(([profileResponse, overviewResponse, cardsResponse, users]) => {
+      .then(([profileResponse, overviewResponse, deckAssetsResponse, cardsResponse, users]) => {
         setProfile(profileResponse);
         setOverview(overviewResponse);
+        setDeckAssets(deckAssetsResponse);
         setCards(cardsResponse);
         setUsersResponse(users);
       })
@@ -94,12 +104,14 @@ export function AdminPage({ locale, messages }: Props) {
     if (!token) {
       return;
     }
-    const [overviewResponse, cardsResponse, users] = await Promise.all([
+    const [overviewResponse, deckAssetsResponse, cardsResponse, users] = await Promise.all([
       apiFetch<AdminOverview>("/v1/admin/overview", undefined, token),
+      apiFetch<AdminDeckAssets>("/v1/admin/deck-assets", undefined, token),
       apiFetch<AdminCard[]>("/v1/admin/cards", undefined, token),
       apiFetch<AdminUsersResponse>("/v1/admin/users", undefined, token),
     ]);
     setOverview(overviewResponse);
+    setDeckAssets(deckAssetsResponse);
     setCards(cardsResponse);
     setUsersResponse(users);
   };
@@ -140,6 +152,41 @@ export function AdminPage({ locale, messages }: Props) {
     }
   };
 
+  const uploadCardBackImage = async () => {
+    if (!token) {
+      return;
+    }
+    if (!pendingCardBackFile) {
+      setError("カード裏面に登録する画像を選択してください。");
+      return;
+    }
+
+    setUploadingCardBack(true);
+    setError("");
+    setNotice("");
+
+    const formData = new FormData();
+    formData.append("image", pendingCardBackFile);
+
+    try {
+      await apiFetch<AdminDeckAssets>(
+        "/v1/admin/deck-assets/card-back-image",
+        {
+          method: "POST",
+          body: formData,
+        },
+        token,
+      );
+      setPendingCardBackFile(null);
+      await refreshCards();
+      setNotice("カード裏面画像を更新しました。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "カード裏面画像の登録に失敗しました。");
+    } finally {
+      setUploadingCardBack(false);
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("admin_token");
     router.push(localizePath(locale, "/admin/login"));
@@ -177,6 +224,10 @@ export function AdminPage({ locale, messages }: Props) {
         <div className="panel summaryCard">
           <strong>{overview?.admin_username ?? "..."}</strong>
           <p>.env で管理する管理者アカウント</p>
+        </div>
+        <div className="panel summaryCard">
+          <strong>{deckAssets?.has_card_back_image ? "設定済み" : "未設定"}</strong>
+          <p>カード裏面画像</p>
         </div>
       </div>
 
@@ -227,6 +278,39 @@ export function AdminPage({ locale, messages }: Props) {
         <p>各カードごとに画像を登録できます。推奨形式は `png`, `jpg`, `webp`, `gif` です。</p>
         {error ? <div className="error">{error}</div> : null}
         {notice ? <div className="notice">{notice}</div> : null}
+        <article className="adminCardItem adminDeckAsset">
+          <div className="adminCardPreview">
+            {deckAssets?.card_back_image_url ? (
+              <img
+                alt="カード裏面"
+                className="adminCardImage"
+                src={resolveApiAssetUrl(deckAssets.card_back_image_url) ?? undefined}
+              />
+            ) : (
+              <div className="adminCardPlaceholder">No back image</div>
+            )}
+          </div>
+          <div className="adminCardBody">
+            <strong>カード裏面</strong>
+            <p>山札や未公開状態で共通利用する裏面画像です。</p>
+            <p>推奨形式は `png`, `jpg`, `webp`, `gif` です。</p>
+            <div className="adminUploadActions">
+              <input
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={(event) => setPendingCardBackFile(event.target.files?.[0] ?? null)}
+                type="file"
+              />
+              <button
+                className="button"
+                disabled={uploadingCardBack || !pendingCardBackFile}
+                onClick={() => void uploadCardBackImage()}
+                type="button"
+              >
+                {uploadingCardBack ? "Uploading..." : deckAssets?.has_card_back_image ? "裏面画像を更新" : "裏面画像を登録"}
+              </button>
+            </div>
+          </div>
+        </article>
         <div className="adminCardGrid">
           {cards.map((card) => (
             <article className="adminCardItem" key={card.slug}>

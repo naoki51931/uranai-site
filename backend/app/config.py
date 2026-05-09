@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     stripe_price_id: str
     app_base_url: str = "http://localhost"
     billing_enabled: bool = True
+    password_reset_expire_minutes: int = 60
     followup_delay_days: int = 14
     followup_poll_seconds: int = 60
     smtp_host: str = ""
@@ -28,6 +29,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     openai_api_key: str = ""
     openai_model: str = ""
+    ai_model: str = ""
+    openai_base_url: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 

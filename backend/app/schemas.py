@@ -14,6 +14,20 @@ class UserLogin(BaseModel):
     password: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    locale: str = Field(default="ja", min_length=2, max_length=8, pattern="^[a-zA-Z0-9-]+$")
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=255)
+    password: str = Field(min_length=8, max_length=255)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class AdminLogin(BaseModel):
     username: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=1, max_length=255)
@@ -97,6 +111,11 @@ class TarotCardAdminResponse(BaseModel):
     meaning: str
     image_url: str | None = None
     has_image: bool
+
+
+class AdminDeckAssetsResponse(BaseModel):
+    card_back_image_url: str | None = None
+    has_card_back_image: bool
 
 
 class AdminOverviewResponse(BaseModel):

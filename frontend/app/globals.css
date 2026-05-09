@@ -244,10 +244,23 @@ a {
 }
 
 .readingCard {
+  display: grid;
+  gap: 10px;
   padding: 18px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid var(--line);
+}
+
+.readingCard p,
+.shuffleStatus p {
+  margin: 0;
+}
+
+.readingLead {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.8;
 }
 
 .readingPosition {
@@ -284,10 +297,117 @@ a {
   transform: rotate(180deg);
 }
 
+.readingArtworkBack {
+  transform: none;
+}
+
 .readingArtworkPlaceholder,
 .adminCardPlaceholder {
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.shuffleScene {
+  display: grid;
+  gap: 18px;
+}
+
+.shuffleDeck {
+  position: relative;
+  min-height: 270px;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(212, 171, 125, 0.26), transparent 24%),
+    radial-gradient(circle at 80% 24%, rgba(108, 71, 52, 0.16), transparent 26%),
+    linear-gradient(180deg, rgba(55, 38, 32, 0.96), rgba(31, 24, 21, 0.98));
+}
+
+.shuffleDeck.isResolving {
+  min-height: 200px;
+}
+
+.shuffleCardBack {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 112px;
+  height: 176px;
+  margin: -88px 0 0 -56px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  background: rgba(245, 238, 226, 0.08);
+  transform: translate(var(--shuffle-x), var(--shuffle-y)) rotate(var(--shuffle-rotate));
+  animation: shuffleScatter 3.4s ease-in-out infinite;
+  animation-delay: calc(var(--shuffle-index) * -0.12s);
+}
+
+.shuffleDeck.isMotionStopped .shuffleCardBack {
+  animation-play-state: paused;
+}
+
+.shuffleDeck.isMotionActive .shuffleCardBack {
+  animation-play-state: running;
+}
+
+.shuffleDeck.isResolving .shuffleCardBack {
+  animation-play-state: paused;
+  opacity: 0.18;
+  transform: translate(calc(var(--shuffle-x) * 0.45), calc(var(--shuffle-y) * 0.45)) rotate(calc(var(--shuffle-rotate) * 0.45));
+}
+
+.shuffleCardBackImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shuffleCardBackPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  text-align: center;
+  color: rgba(255, 245, 232, 0.88);
+  letter-spacing: 0.22em;
+  font-size: 0.7rem;
+  background:
+    linear-gradient(145deg, rgba(180, 92, 59, 0.82), rgba(72, 45, 33, 0.98)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
+}
+
+.shuffleStatus {
+  display: grid;
+  gap: 6px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid var(--line);
+}
+
+.shuffleStatus strong {
+  font-size: 1.05rem;
+}
+
+.readingCards.isAnimatedDraw {
+  align-items: start;
+}
+
+.readingCard.isRevealing {
+  animation: drawRise 0.7s ease both;
+}
+
+.readingCard.isFaceDown .readingArtworkFrame {
+  background: linear-gradient(180deg, rgba(91, 65, 52, 0.9), rgba(47, 34, 28, 0.96));
+}
+
+.readingCard.isFaceDown strong,
+.readingCard.isFaceDown p {
+  color: var(--muted);
 }
 
 .summaryCards,
@@ -336,6 +456,10 @@ a {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.52);
   border: 1px solid var(--line);
+}
+
+.adminDeckAsset {
+  margin-bottom: 18px;
 }
 
 .adminCardBody {
@@ -419,6 +543,15 @@ a {
   border: 1px solid var(--line);
 }
 
+.shareRow {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.shareButton {
+  background: rgba(255, 255, 255, 0.72);
+}
+
 .premiumExplanation h3,
 .premiumExplanation p {
   margin: 0;
@@ -427,6 +560,25 @@ a {
 .premiumExplanation {
   display: grid;
   gap: 10px;
+}
+
+.premiumExplanationBody {
+  display: grid;
+  gap: 12px;
+}
+
+.premiumExplanationBody h4,
+.premiumExplanationBody p {
+  margin: 0;
+}
+
+.premiumExplanationBody h4 {
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.premiumExplanationBody p {
+  line-height: 1.85;
 }
 
 .premiumModelRow {
@@ -508,5 +660,37 @@ a {
 
   .adminCardItem {
     grid-template-columns: 1fr;
+  }
+
+  .shuffleCardBack {
+    width: 88px;
+    height: 138px;
+    margin: -69px 0 0 -44px;
+  }
+}
+
+@keyframes shuffleScatter {
+  0% {
+    transform: translate(var(--shuffle-x), var(--shuffle-y)) rotate(var(--shuffle-rotate)) scale(0.96);
+  }
+  25% {
+    transform: translate(calc(var(--shuffle-x) * -0.85), calc(var(--shuffle-y) * 0.6 - 12px)) rotate(calc(var(--shuffle-rotate) * -0.75)) scale(1.04);
+  }
+  55% {
+    transform: translate(calc(var(--shuffle-x) * 1.15), calc(var(--shuffle-y) * -0.8 + 8px)) rotate(calc(var(--shuffle-rotate) * 0.55)) scale(0.98);
+  }
+  100% {
+    transform: translate(var(--shuffle-x), var(--shuffle-y)) rotate(var(--shuffle-rotate)) scale(0.96);
+  }
+}
+
+@keyframes drawRise {
+  0% {
+    opacity: 0;
+    transform: translateY(36px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
