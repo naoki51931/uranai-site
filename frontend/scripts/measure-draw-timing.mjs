@@ -15,11 +15,21 @@ async function ensureUser() {
       email: EMAIL,
       password: PASSWORD,
       full_name: FULL_NAME,
+      locale: LOCALE,
     },
   });
 
   if (!registerResponse.ok() && registerResponse.status() !== 409) {
     throw new Error(`register failed: ${registerResponse.status()} ${await registerResponse.text()}`);
+  }
+
+  if (registerResponse.ok()) {
+    const registerPayload = await registerResponse.json();
+    if (registerPayload.requires_mfa) {
+      throw new Error(
+        "measure-draw-timing does not support registration email verification. Disable EMAIL_MFA_ENABLED for this test or pre-create the user.",
+      );
+    }
   }
 
   const loginResponse = await api.post("/api/v1/auth/login", {
@@ -31,6 +41,11 @@ async function ensureUser() {
 
   if (!loginResponse.ok()) {
     throw new Error(`login failed: ${loginResponse.status()} ${await loginResponse.text()}`);
+  }
+
+  const loginPayload = await loginResponse.json();
+  if (loginPayload.requires_mfa) {
+    throw new Error("measure-draw-timing does not support email MFA. Disable EMAIL_MFA_ENABLED for this test or use a test-only login flow.");
   }
 
   await api.dispose();

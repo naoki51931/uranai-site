@@ -1,8 +1,25 @@
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type Locale, normalizeLocale } from "@/lib/i18n-core";
 
+export const PLAM_HOST = "palm.moon-arcana.com";
+
 export function getSiteUrl(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.APP_BASE_URL ?? "http://localhost";
   return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+}
+
+export function normalizeHost(host: string | null | undefined): string {
+  return (host ?? "").trim().toLowerCase().replace(/:\d+$/, "");
+}
+
+export function isPlamHost(host: string | null | undefined): boolean {
+  return normalizeHost(host) === PLAM_HOST;
+}
+
+export function getSiteUrlForHost(host: string | null | undefined): string {
+  if (isPlamHost(host)) {
+    return `https://${PLAM_HOST}`;
+  }
+  return getSiteUrl();
 }
 
 export function localizedUrl(locale: string, path = ""): string {
@@ -11,11 +28,31 @@ export function localizedUrl(locale: string, path = ""): string {
   return `${getSiteUrl()}/${normalizedLocale}${normalizedPath}`;
 }
 
+export function localizedPalmUrl(locale: string, path = ""): string {
+  const normalizedLocale = normalizeLocale(locale);
+  const normalizedPath = !path || path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;
+  return `https://${PLAM_HOST}/${normalizedLocale}${normalizedPath}`;
+}
+
+export function localizedUrlForHost(host: string | null | undefined, locale: string, path = ""): string {
+  const normalizedLocale = normalizeLocale(locale);
+  const normalizedPath = !path || path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;
+  return `${getSiteUrlForHost(host)}/${normalizedLocale}${normalizedPath}`;
+}
+
 export function buildLanguageAlternates(path = ""): Record<string, string> {
   const alternates = Object.fromEntries(
     SUPPORTED_LOCALES.map((locale) => [locale, localizedUrl(locale, path)]),
   ) as Record<string, string>;
   alternates["x-default"] = localizedUrl(DEFAULT_LOCALE, path);
+  return alternates;
+}
+
+export function buildLanguageAlternatesForHost(host: string | null | undefined, path = ""): Record<string, string> {
+  const alternates = Object.fromEntries(
+    SUPPORTED_LOCALES.map((locale) => [locale, localizedUrlForHost(host, locale, path)]),
+  ) as Record<string, string>;
+  alternates["x-default"] = localizedUrlForHost(host, DEFAULT_LOCALE, path);
   return alternates;
 }
 

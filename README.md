@@ -95,6 +95,7 @@ cron のログは `logs/backup.log` に出力されます。
 ## 主なエンドポイント
 
 - `POST /api/v1/auth/register`
+- `POST /api/v1/auth/register/verify`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/password-reset/request`
 - `POST /api/v1/auth/password-reset/confirm`

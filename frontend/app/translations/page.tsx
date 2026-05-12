@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirectToPreferredLocale } from "@/lib/locale-redirect";
 
-import { DEFAULT_LOCALE } from "@/lib/i18n-core";
-
-export default function TranslationsRedirectPage() {
-  redirect(`/${DEFAULT_LOCALE}/translations`);
+export default async function TranslationsRedirectPage() {
+  await redirectToPreferredLocale("/translations");
 }

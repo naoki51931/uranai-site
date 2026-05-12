@@ -7,11 +7,13 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     full_name: str = Field(min_length=1, max_length=255)
+    locale: str = Field(default="ja", min_length=2, max_length=8, pattern="^[a-zA-Z0-9-]+$")
 
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    locale: str = Field(default="ja", min_length=2, max_length=8, pattern="^[a-zA-Z0-9-]+$")
 
 
 class PasswordResetRequest(BaseModel):
@@ -36,6 +38,20 @@ class AdminLogin(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class LoginChallengeResponse(BaseModel):
+    requires_mfa: bool
+    message: str
+    challenge_id: str | None = None
+    expires_in_seconds: int | None = None
+    access_token: str | None = None
+    token_type: str = "bearer"
+
+
+class LoginVerifyRequest(BaseModel):
+    challenge_id: str = Field(min_length=20, max_length=255)
+    code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
 
 class UserProfile(BaseModel):
@@ -81,6 +97,24 @@ class ReadingResponse(BaseModel):
 class PremiumReadingExplanationResponse(BaseModel):
     explanation: str | None = None
     cached: bool = False
+
+
+class PalmReadingResponse(BaseModel):
+    id: int
+    model: str
+    locale: str
+    focus: str
+    left_hand_image_url: str
+    right_hand_image_url: str
+    interpretation: str
+    created_at: datetime
+
+
+class PalmReadingRerunRequest(BaseModel):
+    reading_id: int
+    locale: str = Field(default="ja", min_length=2, max_length=8)
+    model: str = Field(min_length=1, max_length=100)
+    focus: str = Field(default="", max_length=500)
 
 
 class FollowupStatusResponse(BaseModel):

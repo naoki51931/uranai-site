@@ -11,6 +11,7 @@ services:
     environment:
       SERVER_NAME: ${SERVER_NAME}
       LETSENCRYPT_PRIMARY_DOMAIN: ${LETSENCRYPT_PRIMARY_DOMAIN}
+      BLOCKED_IPS: ${BLOCKED_IPS:-}
     volumes:
       - ./infra/nginx/templates:/etc/nginx/templates:ro
       - ./infra/nginx/docker-entrypoint.d:/docker-entrypoint.d:ro

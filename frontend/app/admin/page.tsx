@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirectToPreferredLocale } from "@/lib/locale-redirect";
 
-import { DEFAULT_LOCALE } from "@/lib/i18n-core";
-
-export default function AdminRedirectPage() {
-  redirect(`/${DEFAULT_LOCALE}/admin`);
+export default async function AdminRedirectPage() {
+  await redirectToPreferredLocale("/admin");
 }

@@ -1,0 +1,28 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="36" y1="24" x2="220" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2B2523"/>
+      <stop offset="1" stop-color="#4A352E"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(103 94) rotate(54.806) scale(76.7071)">
+      <stop stop-color="#FFFDF7"/>
+      <stop offset="0.34" stop-color="#FAE9C9"/>
+      <stop offset="0.66" stop-color="#D9AF88"/>
+      <stop offset="1" stop-color="#B45C3B"/>
+    </radialGradient>
+    <filter id="glow" x="34" y="28" width="188" height="188" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="8" result="effect1_foregroundBlur_0_1"/>
+    </filter>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="78" fill="#201B1A"/>
+  <g filter="url(#glow)">
+    <circle cx="118" cy="118" r="62" fill="url(#moon)"/>
+  </g>
+  <circle cx="140" cy="118" r="58" fill="url(#bg)"/>
+  <circle cx="102" cy="86" r="8" fill="#FFF6E6" fill-opacity="0.72"/>
+  <circle cx="84" cy="120" r="5" fill="#F6DDC0" fill-opacity="0.46"/>
+  <circle cx="96" cy="146" r="6" fill="#F6DDC0" fill-opacity="0.3"/>
+</svg>

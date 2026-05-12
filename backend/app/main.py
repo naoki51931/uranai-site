@@ -16,6 +16,7 @@ from app.runtime import weaviate_store
 from app.services.card_catalog import ensure_card_upload_dir, seed_tarot_cards
 from app.services.followups import followup_worker
 from app.services.i18n import seed_default_translations
+from app.services.palm_readings import ensure_palm_upload_dir
 from app.tarot_data import TAROT_CARDS
 
 
@@ -48,6 +49,7 @@ async def on_startup():
     Base.metadata.create_all(bind=engine)
     ensure_runtime_schema()
     ensure_card_upload_dir()
+    ensure_palm_upload_dir()
     seed_default_translations()
     with SessionLocal() as db:
         seed_tarot_cards(db)

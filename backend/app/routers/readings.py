@@ -3,19 +3,34 @@ from __future__ import annotations
 import hashlib
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 import redis
 
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user, has_paid_access, is_billing_enabled
-from app.models import TarotCard, TarotReading, User
-from app.schemas import AdminDeckAssetsResponse, PremiumReadingExplanationResponse, ReadingRequest, ReadingResponse
+from app.models import PalmReading, TarotCard, TarotReading, User
+from app.schemas import (
+    AdminDeckAssetsResponse,
+    PalmReadingResponse,
+    PalmReadingRerunRequest,
+    PremiumReadingExplanationResponse,
+    ReadingRequest,
+    ReadingResponse,
+)
 from app.runtime import weaviate_store
 from app.services.card_catalog import build_public_image_url, get_card_back_image_url, tarot_card_to_dict, tarot_sort_key
 from app.services.followups import schedule_followup
 from app.services.learning import build_generation_guidance
+from app.services.llm_client import LLMRequestError
+from app.services.palm_readings import (
+    PALM_READING_MODELS,
+    build_public_palm_image_url,
+    generate_palm_interpretation,
+    get_palm_model,
+    save_palm_image,
+)
 from app.services.premium_explanations import ALLOWED_PREMIUM_MODELS, generate_premium_explanation, get_premium_model
 from app.services.reading_limits import (
     get_monthly_reading_count,
@@ -112,6 +127,19 @@ def _build_response(
     )
 
 
+def _build_palm_response(reading: PalmReading) -> PalmReadingResponse:
+    return PalmReadingResponse(
+        id=reading.id,
+        model=reading.model,
+        locale=reading.locale,
+        focus=reading.focus,
+        left_hand_image_url=build_public_palm_image_url(reading.left_hand_image_path),
+        right_hand_image_url=build_public_palm_image_url(reading.right_hand_image_path),
+        interpretation=reading.interpretation,
+        created_at=reading.created_at,
+    )
+
+
 @router.post("", response_model=ReadingResponse)
 def create_reading(
     payload: ReadingRequest,
@@ -193,6 +221,133 @@ def list_readings(
     paid_access = has_paid_access(current_user)
     monthly_readings_used = get_monthly_reading_count(db, current_user)
     return [_build_response(reading, monthly_readings_used, paid_access, db, locale) for reading in readings]
+
+
+@router.post("/palm", response_model=PalmReadingResponse)
+def create_palm_reading(
+    locale: str = Form(default="ja"),
+    model: str = Form(default="gpt-4.1-mini"),
+    focus: str = Form(default=""),
+    left_hand_image: UploadFile = File(...),
+    right_hand_image: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_model = get_palm_model(model)
+    if not resolved_model:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported palm reading model. Allowed models: {', '.join(PALM_READING_MODELS)}",
+        )
+
+    try:
+        left_hand_image_path = save_palm_image(left_hand_image, "left-hand")
+        right_hand_image_path = save_palm_image(right_hand_image, "right-hand")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    try:
+        interpretation = generate_palm_interpretation(
+            locale=normalize_locale(locale),
+            model=resolved_model,
+            left_hand_image_path=left_hand_image_path,
+            right_hand_image_path=right_hand_image_path,
+            focus=focus,
+        )
+    except LLMRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY if exc.status_code < 400 else exc.status_code,
+            detail=exc.message,
+        ) from exc
+    if not interpretation:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Palm reading is currently unavailable. Please try again.",
+        )
+
+    reading = PalmReading(
+        user_id=current_user.id,
+        model=resolved_model,
+        locale=normalize_locale(locale),
+        focus=focus.strip(),
+        left_hand_image_path=left_hand_image_path,
+        right_hand_image_path=right_hand_image_path,
+        interpretation=interpretation,
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+    return _build_palm_response(reading)
+
+
+@router.post("/palm/rerun", response_model=PalmReadingResponse)
+def rerun_palm_reading(
+    payload: PalmReadingRerunRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_model = get_palm_model(payload.model)
+    if not resolved_model:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported palm reading model. Allowed models: {', '.join(PALM_READING_MODELS)}",
+        )
+
+    source_reading = (
+        db.query(PalmReading)
+        .filter(PalmReading.id == payload.reading_id, PalmReading.user_id == current_user.id)
+        .first()
+    )
+    if not source_reading:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Palm reading not found.")
+
+    try:
+        interpretation = generate_palm_interpretation(
+            locale=normalize_locale(payload.locale),
+            model=resolved_model,
+            left_hand_image_path=source_reading.left_hand_image_path,
+            right_hand_image_path=source_reading.right_hand_image_path,
+            focus=payload.focus,
+            previous_interpretation=source_reading.interpretation,
+        )
+    except LLMRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY if exc.status_code < 400 else exc.status_code,
+            detail=exc.message,
+        ) from exc
+    if not interpretation:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Palm reading is currently unavailable. Please try again.",
+        )
+
+    reading = PalmReading(
+        user_id=current_user.id,
+        model=resolved_model,
+        locale=normalize_locale(payload.locale),
+        focus=payload.focus.strip(),
+        left_hand_image_path=source_reading.left_hand_image_path,
+        right_hand_image_path=source_reading.right_hand_image_path,
+        interpretation=interpretation,
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+    return _build_palm_response(reading)
+
+
+@router.get("/palm", response_model=list[PalmReadingResponse])
+def list_palm_readings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    readings = (
+        db.query(PalmReading)
+        .filter(PalmReading.user_id == current_user.id)
+        .order_by(PalmReading.created_at.desc(), PalmReading.id.desc())
+        .all()
+    )
+    return [_build_palm_response(reading) for reading in readings]
 
 
 @router.get("/{reading_id}/premium-explanation", response_model=PremiumReadingExplanationResponse)

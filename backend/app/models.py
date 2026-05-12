@@ -46,6 +46,20 @@ class TarotReading(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class PalmReading(Base):
+    __tablename__ = "palm_readings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    locale: Mapped[str] = mapped_column(String(8), nullable=False, default="ja")
+    focus: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    left_hand_image_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    right_hand_image_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    interpretation: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class TarotCard(Base):
     __tablename__ = "tarot_cards"
 

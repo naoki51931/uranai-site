@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirectToPreferredLocale } from "@/lib/locale-redirect";
 
-import { DEFAULT_LOCALE } from "@/lib/i18n-core";
-
-export default function UnsubscribeRedirectPage() {
-  redirect(`/${DEFAULT_LOCALE}/unsubscribe`);
+export default async function UnsubscribeRedirectPage() {
+  await redirectToPreferredLocale("/unsubscribe");
 }

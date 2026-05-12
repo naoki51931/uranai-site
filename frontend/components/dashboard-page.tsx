@@ -8,7 +8,7 @@ import { PreDrawAnimation } from "@/components/tarot/pre-draw-animation";
 import { ApiRequestError, apiFetch, resolveApiAssetUrl } from "@/lib/api";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
-import { localizedUrl } from "@/lib/site";
+import { isPlamHost, localizedUrl } from "@/lib/site";
 
 type Profile = {
   id: number;
@@ -57,12 +57,33 @@ type DeckAssetsResponse = {
   has_card_back_image: boolean;
 };
 
+type PalmReading = {
+  id: number;
+  model: string;
+  locale: string;
+  focus: string;
+  left_hand_image_url: string;
+  right_hand_image_url: string;
+  interpretation: string;
+  created_at: string;
+};
+
+type PalmReadingRerunRequest = {
+  reading_id: number;
+  locale: string;
+  model: string;
+  focus: string;
+};
+
 type DrawState = "idle" | "preparing" | "revealing" | "completed";
 
 const PREMIUM_MODELS = ["default", "google/gemini-3-flash-preview", "gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano"] as const;
 const PREMIUM_MODEL_STORAGE_KEY = "premium_explanation_model";
+const PALM_MODELS = ["gpt-4.1-mini", "google/gemini-3-flash-preview"] as const;
+const PALM_MODEL_STORAGE_KEY = "palm_reading_model";
 const PREPARING_DELAY_MS = 4200;
 const PREPARING_DELAY_REDUCED_MS = 450;
+const PALM_FOLLOWUP_SUGGESTIONS = ["恋愛運", "仕事運", "結婚運", "金運", "時期", "相性"] as const;
 
 type Props = {
   locale: Locale;
@@ -87,45 +108,100 @@ function renderInlinePremiumText(text: string) {
   });
 }
 
-function renderPremiumExplanation(text: string) {
-  const blocks = text
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  return (
-    <div className="premiumExplanationBody">
-      {blocks.map((block, blockIndex) => {
-        const heading = block.match(/^#{1,3}\s+(.+)$/);
-        if (heading) {
-          return <h4 key={`premium-heading-${blockIndex}`}>{renderInlinePremiumText(heading[1])}</h4>;
-        }
-
-        const lines = block
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean);
-        return (
-          <p key={`premium-paragraph-${blockIndex}`}>
-            {lines.map((line, lineIndex) => (
-              <Fragment key={`premium-line-${blockIndex}-${lineIndex}`}>
-                {lineIndex > 0 ? <br /> : null}
-                {renderInlinePremiumText(line)}
-              </Fragment>
-            ))}
-          </p>
-        );
-      })}
-    </div>
-  );
+function isHeadingLine(line: string) {
+  if (/^#{1,3}\s+.+$/.test(line)) {
+    return true;
+  }
+  return /^[A-Z0-9][A-Z0-9\s&/:()\-]{2,}$/.test(line) && line.length <= 80;
 }
 
-function premiumModelLabel(model: (typeof PREMIUM_MODELS)[number]) {
+function renderPremiumExplanation(text: string) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let paragraphLines: string[] = [];
+  let listLines: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) {
+      return;
+    }
+    const key = `premium-paragraph-${elements.length}`;
+    elements.push(
+      <p key={key}>
+        {paragraphLines.map((line, lineIndex) => (
+          <Fragment key={`${key}-line-${lineIndex}`}>
+            {lineIndex > 0 ? <br /> : null}
+            {renderInlinePremiumText(line)}
+          </Fragment>
+        ))}
+      </p>,
+    );
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (listLines.length === 0) {
+      return;
+    }
+    const key = `premium-list-${elements.length}`;
+    elements.push(
+      <ul key={key}>
+        {listLines.map((line, lineIndex) => (
+          <li key={`${key}-item-${lineIndex}`}>{renderInlinePremiumText(line.replace(/^[-*]\s+/, ""))}</li>
+        ))}
+      </ul>,
+    );
+    listLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (isHeadingLine(line)) {
+      flushParagraph();
+      flushList();
+      const headingText = line.replace(/^#{1,3}\s+/, "");
+      elements.push(<h4 key={`premium-heading-${elements.length}`}>{renderInlinePremiumText(headingText)}</h4>);
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(line)) {
+      flushParagraph();
+      listLines.push(line);
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+
+  return <div className="premiumExplanationBody">{elements}</div>;
+}
+
+function premiumModelLabel(model: (typeof PREMIUM_MODELS)[number], messages: Messages) {
   if (model === "default") {
-    return "server default";
+    return t(messages, "dashboard.model_default", "server default");
   }
   if (model === "google/gemini-3-flash-preview") {
     return "Gemini 3 Flash Preview";
+  }
+  return model;
+}
+
+function palmModelLabel(model: string, messages: Messages) {
+  if (model === "gpt-4.1-mini") {
+    return t(messages, "dashboard.palm_model_main", "ChatGPT (Main)");
+  }
+  if (model === "google/gemini-3-flash-preview") {
+    return t(messages, "dashboard.palm_model_sub", "Gemini (Sub)");
   }
   return model;
 }
@@ -160,6 +236,17 @@ export function DashboardPage({ locale, messages }: Props) {
   const [premiumExplanations, setPremiumExplanations] = useState<Record<string, string | null>>({});
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumModel, setPremiumModel] = useState<(typeof PREMIUM_MODELS)[number]>("default");
+  const [isPalmDashboard, setIsPalmDashboard] = useState(false);
+  const [palmModel, setPalmModel] = useState<(typeof PALM_MODELS)[number]>("gpt-4.1-mini");
+  const [palmFocus, setPalmFocus] = useState("");
+  const [leftHandFile, setLeftHandFile] = useState<File | null>(null);
+  const [rightHandFile, setRightHandFile] = useState<File | null>(null);
+  const [leftHandPreview, setLeftHandPreview] = useState<string | null>(null);
+  const [rightHandPreview, setRightHandPreview] = useState<string | null>(null);
+  const [palmReadings, setPalmReadings] = useState<PalmReading[]>([]);
+  const [activePalmReading, setActivePalmReading] = useState<PalmReading | null>(null);
+  const [palmLoading, setPalmLoading] = useState(false);
+  const [palmError, setPalmError] = useState("");
   const [error, setError] = useState("");
   const [premiumError, setPremiumError] = useState("");
 
@@ -177,6 +264,11 @@ export function DashboardPage({ locale, messages }: Props) {
     if (storedModel && PREMIUM_MODELS.includes(storedModel as (typeof PREMIUM_MODELS)[number])) {
       setPremiumModel(storedModel as (typeof PREMIUM_MODELS)[number]);
     }
+    const storedPalmModel = localStorage.getItem(PALM_MODEL_STORAGE_KEY);
+    if (storedPalmModel && PALM_MODELS.includes(storedPalmModel as (typeof PALM_MODELS)[number])) {
+      setPalmModel(storedPalmModel as (typeof PALM_MODELS)[number]);
+    }
+    setIsPalmDashboard(isPlamHost(window.location.host));
   }, [locale, router]);
 
   useEffect(() => {
@@ -210,6 +302,38 @@ export function DashboardPage({ locale, messages }: Props) {
       })
       .catch(() => undefined);
   }, [readingsPath, token]);
+
+  useEffect(() => {
+    if (!token || !isPalmDashboard) {
+      return;
+    }
+    void apiFetch<PalmReading[]>("/v1/readings/palm", undefined, token)
+      .then((items) => {
+        setPalmReadings(items);
+        setActivePalmReading((current) => current ?? items[0] ?? null);
+      })
+      .catch(() => undefined);
+  }, [isPalmDashboard, token]);
+
+  useEffect(() => {
+    if (!leftHandFile) {
+      setLeftHandPreview(null);
+      return;
+    }
+    const nextUrl = URL.createObjectURL(leftHandFile);
+    setLeftHandPreview(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [leftHandFile]);
+
+  useEffect(() => {
+    if (!rightHandFile) {
+      setRightHandPreview(null);
+      return;
+    }
+    const nextUrl = URL.createObjectURL(rightHandFile);
+    setRightHandPreview(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [rightHandFile]);
 
   useEffect(() => {
     if (!token || !profile?.has_paid_access || !reading) {
@@ -269,6 +393,20 @@ export function DashboardPage({ locale, messages }: Props) {
         return readings[0] ?? null;
       }
       return readings.find((item) => item.id === current.id) ?? readings[0] ?? null;
+    });
+  };
+
+  const refreshPalmReadings = async () => {
+    if (!token) {
+      return;
+    }
+    const items = await apiFetch<PalmReading[]>("/v1/readings/palm", undefined, token);
+    setPalmReadings(items);
+    setActivePalmReading((current) => {
+      if (!current) {
+        return items[0] ?? null;
+      }
+      return items.find((item) => item.id === current.id) ?? items[0] ?? null;
     });
   };
 
@@ -442,6 +580,80 @@ export function DashboardPage({ locale, messages }: Props) {
     setPremiumError("");
   };
 
+  const handlePalmModelChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextModel = event.target.value as (typeof PALM_MODELS)[number];
+    setPalmModel(nextModel);
+    localStorage.setItem(PALM_MODEL_STORAGE_KEY, nextModel);
+    setPalmError("");
+  };
+
+  const createPalmReading = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token) {
+      return;
+    }
+
+    setPalmLoading(true);
+    setPalmError("");
+    try {
+      let result: PalmReading;
+      if (leftHandFile && rightHandFile) {
+        const formData = new FormData();
+        formData.set("locale", locale);
+        formData.set("model", palmModel);
+        formData.set("focus", palmFocus);
+        formData.set("left_hand_image", leftHandFile);
+        formData.set("right_hand_image", rightHandFile);
+
+        result = await apiFetch<PalmReading>(
+          "/v1/readings/palm",
+          {
+            method: "POST",
+            body: formData,
+          },
+          token,
+        );
+      } else {
+        if (!activePalmReading) {
+          setPalmError(
+            t(
+              messages,
+              "dashboard.palm_reuse_missing",
+              "Upload both hand photos first, or choose your latest palm reading before asking a new question.",
+            ),
+          );
+          return;
+        }
+        result = await apiFetch<PalmReading>(
+          "/v1/readings/palm/rerun",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              reading_id: activePalmReading.id,
+              locale,
+              model: palmModel,
+              focus: palmFocus,
+            } satisfies PalmReadingRerunRequest),
+          },
+          token,
+        );
+      }
+      setPalmReadings((current) => [result, ...current.filter((item) => item.id !== result.id)]);
+      setActivePalmReading(result);
+      setLeftHandFile(null);
+      setRightHandFile(null);
+      setPalmFocus("");
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 402 && profile?.billing_enabled) {
+        await startCheckout();
+        return;
+      }
+      setPalmError(err instanceof Error ? err.message : "Palm reading failed");
+    } finally {
+      setPalmLoading(false);
+    }
+  };
+
   const refreshPremiumExplanation = async () => {
     if (!token || !reading) {
       return;
@@ -460,6 +672,10 @@ export function DashboardPage({ locale, messages }: Props) {
   };
 
   const drawDisabled = drawState === "preparing" || drawState === "revealing";
+  const upgradeDisabled = Boolean(profile?.billing_enabled && profile?.has_paid_access);
+  const upgradeLabel = upgradeDisabled
+    ? t(messages, "dashboard.checkout_active", "Subscribed")
+    : t(messages, "dashboard.checkout", "Upgrade");
   const handleAnimationFinished = useCallback(() => {
     setAnimatingReading(null);
     setDrawState("completed");
@@ -524,61 +740,198 @@ export function DashboardPage({ locale, messages }: Props) {
           <label className="premiumModelField" htmlFor="dashboard-ai-model">
             <span>{t(messages, "dashboard.premium_model", "Model")}</span>
             <select id="dashboard-ai-model" onChange={handlePremiumModelChange} value={premiumModel}>
-              {PREMIUM_MODELS.map((model) => (
-                <option key={model} value={model}>
-                  {premiumModelLabel(model)}
-                </option>
-              ))}
-            </select>
-          </label>
+                {PREMIUM_MODELS.map((model) => (
+                  <option key={model} value={model}>
+                    {premiumModelLabel(model, messages)}
+                  </option>
+                ))}
+              </select>
+            </label>
         </div>
       </div>
 
-      <div className="panel readingPanel">
-        <h2>{t(messages, "dashboard.reading.title", "Tarot Reading")}</h2>
-        <p>{t(messages, "dashboard.reading.copy", "Enter your question to run a three-card reading.")}</p>
-        <form onSubmit={createReading}>
-          <div className="field">
-            <label htmlFor="question">{t(messages, "dashboard.question", "Question")}</label>
-            <textarea
-              id="question"
-              rows={5}
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder={t(
-                messages,
-                "dashboard.question_placeholder",
-                "Example: Should I stay in my current job or start preparing for a move?",
-              )}
-              required
-            />
-          </div>
-          {error ? <div className="error">{error}</div> : null}
-          <div className="ctaRow">
-            <button className="button" disabled={drawDisabled} type="submit">
-              {drawDisabled ? t(messages, "dashboard.loading", "Reading...") : t(messages, "dashboard.submit", "Read")}
-            </button>
-            <button className="ghostButton" onClick={() => router.push(localizePath(locale, "/translations"))} type="button">
-              {t(messages, "dashboard.translations", "Translations")}
-            </button>
-            {profile?.billing_enabled ? (
-              <>
-                <button className="ghostButton" onClick={startCheckout} type="button">
-                  {t(messages, "dashboard.checkout", "Upgrade")}
+      {isPalmDashboard ? (
+        <div className="panel readingPanel">
+          <h2>{t(messages, "dashboard.palm_title", "Palm Reading")}</h2>
+          <p>
+            {t(
+              messages,
+              "dashboard.palm_copy",
+              "Take or upload one photo of your left hand and one photo of your right hand. ChatGPT is the main reader and Gemini is available as a secondary switch.",
+            )}
+          </p>
+          <form onSubmit={createPalmReading}>
+            <div className="premiumModelRow">
+              <label className="premiumModelField" htmlFor="palm-model">
+                <span>{t(messages, "dashboard.palm_model", "Palm model")}</span>
+                <select id="palm-model" onChange={handlePalmModelChange} value={palmModel}>
+                  {PALM_MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {palmModelLabel(model, messages)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="field">
+              <label htmlFor="palm-focus">{t(messages, "dashboard.palm_focus", "Focus or follow-up question")}</label>
+              <textarea
+                id="palm-focus"
+                rows={3}
+                value={palmFocus}
+                onChange={(event) => setPalmFocus(event.target.value)}
+                placeholder={t(
+                  messages,
+                  "dashboard.palm_focus_placeholder",
+                  "Optional: ask about love, career, marriage, money, timing, compatibility, or a follow-up based on your latest result",
+                )}
+              />
+            </div>
+            <div className="ctaRow">
+              {PALM_FOLLOWUP_SUGGESTIONS.map((suggestion) => (
+                <button className="ghostButton" key={suggestion} onClick={() => setPalmFocus(suggestion)} type="button">
+                  {suggestion}
                 </button>
-                <button className="ghostButton" onClick={openPortal} type="button">
-                  {t(messages, "dashboard.portal", "Billing Portal")}
-                </button>
-                <Link className="ghostButton" href={localizePath(locale, "/unsubscribe")}>
-                  {t(messages, "dashboard.unsubscribe", "Cancel subscription")}
-                </Link>
-              </>
+              ))}
+            </div>
+            {activePalmReading && !leftHandFile && !rightHandFile ? (
+              <p>
+                {t(
+                  messages,
+                  "dashboard.palm_reuse_hint",
+                  "Without uploading new photos, this will ask a new question using the latest selected palm images and the latest palm result as context.",
+                )}
+              </p>
             ) : null}
-          </div>
-        </form>
-      </div>
+            <div className="readingCards">
+              <div className="readingCard">
+                <strong>{t(messages, "dashboard.palm_left", "Left Hand")}</strong>
+                <input
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => setLeftHandFile(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+                {leftHandPreview ? <img alt="Left hand preview" className="readingArtwork readingArtworkBack" src={leftHandPreview} /> : null}
+              </div>
+              <div className="readingCard">
+                <strong>{t(messages, "dashboard.palm_right", "Right Hand")}</strong>
+                <input
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => setRightHandFile(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+                {rightHandPreview ? <img alt="Right hand preview" className="readingArtwork readingArtworkBack" src={rightHandPreview} /> : null}
+              </div>
+            </div>
+            {palmError ? <div className="error">{palmError}</div> : null}
+            <div className="ctaRow">
+              <button className="button" disabled={palmLoading || (!activePalmReading && (!leftHandFile || !rightHandFile))} type="submit">
+                {palmLoading
+                  ? t(messages, "dashboard.palm_loading", "Reading palms...")
+                  : leftHandFile && rightHandFile
+                    ? t(messages, "dashboard.palm_submit", "Read My Palms")
+                    : t(messages, "dashboard.palm_rerun", "Ask Another Palm Question")}
+              </button>
+              <button className="ghostButton" onClick={() => void refreshPalmReadings()} type="button">
+                {t(messages, "dashboard.palm_refresh", "Refresh palm history")}
+              </button>
+            </div>
+          </form>
+          {activePalmReading ? (
+            <div className="premiumExplanation">
+              <h3>{t(messages, "dashboard.palm_latest", "Latest Palm Reading")}</h3>
+              <p>
+                {t(messages, "dashboard.read_at", "Read at")}: {formatTimestamp(activePalmReading.created_at)}
+              </p>
+              {activePalmReading.focus ? (
+                <p>
+                  <strong>{t(messages, "dashboard.palm_focus", "Focus or follow-up question")}:</strong> {activePalmReading.focus}
+                </p>
+              ) : null}
+              <div className="readingCards">
+                <div className="readingCard">
+                  <strong>{t(messages, "dashboard.palm_left", "Left Hand")}</strong>
+                  <img
+                    alt="Left hand"
+                    className="readingArtwork readingArtworkBack"
+                    src={resolveApiAssetUrl(activePalmReading.left_hand_image_url) ?? undefined}
+                  />
+                </div>
+                <div className="readingCard">
+                  <strong>{t(messages, "dashboard.palm_right", "Right Hand")}</strong>
+                  <img
+                    alt="Right hand"
+                    className="readingArtwork readingArtworkBack"
+                    src={resolveApiAssetUrl(activePalmReading.right_hand_image_url) ?? undefined}
+                  />
+                </div>
+              </div>
+              {renderPremiumExplanation(activePalmReading.interpretation)}
+            </div>
+          ) : null}
+          {palmReadings.length > 0 ? (
+            <div className="historyList">
+              {palmReadings.map((item) => (
+                <button className="historyItem" key={`palm-${item.id}`} onClick={() => setActivePalmReading(item)} type="button">
+                  <strong>{formatTimestamp(item.created_at)}</strong>
+                  <span>{palmModelLabel(item.model, messages)}</span>
+                  <span>{item.focus || t(messages, "dashboard.palm_submit", "Read My Palms")}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
-      {reading && drawState === "completed" ? (
+      {!isPalmDashboard ? (
+        <div className="panel readingPanel">
+          <h2>{t(messages, "dashboard.reading.title", "Tarot Reading")}</h2>
+          <p>{t(messages, "dashboard.reading.copy", "Enter your question to run a three-card reading.")}</p>
+          <form onSubmit={createReading}>
+            <div className="field">
+              <label htmlFor="question">{t(messages, "dashboard.question", "Question")}</label>
+              <textarea
+                id="question"
+                rows={5}
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder={t(
+                  messages,
+                  "dashboard.question_placeholder",
+                  "Example: Should I stay in my current job or start preparing for a move?",
+                )}
+                required
+              />
+            </div>
+            {error ? <div className="error">{error}</div> : null}
+            <div className="ctaRow">
+              <button className="button" disabled={drawDisabled} type="submit">
+                {drawDisabled ? t(messages, "dashboard.loading", "Reading...") : t(messages, "dashboard.submit", "Read")}
+              </button>
+              <button className="ghostButton" onClick={() => router.push(localizePath(locale, "/translations"))} type="button">
+                {t(messages, "dashboard.translations", "Translations")}
+              </button>
+              {profile?.billing_enabled ? (
+                <>
+                  <button className="ghostButton" disabled={upgradeDisabled} onClick={startCheckout} type="button">
+                    {upgradeLabel}
+                  </button>
+                  <button className="ghostButton" onClick={openPortal} type="button">
+                    {t(messages, "dashboard.portal", "Billing Portal")}
+                  </button>
+                  <Link className="ghostButton" href={localizePath(locale, "/unsubscribe")}>
+                    {t(messages, "dashboard.unsubscribe", "Cancel subscription")}
+                  </Link>
+                </>
+              ) : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {!isPalmDashboard && reading && drawState === "completed" ? (
         <div className="panel readingPanel">
           <h2>{t(messages, "dashboard.latest", "Latest Result")}</h2>
           <p>
@@ -622,7 +975,7 @@ export function DashboardPage({ locale, messages }: Props) {
                   <select id="premium-model" onChange={handlePremiumModelChange} value={premiumModel}>
                     {PREMIUM_MODELS.map((model) => (
                       <option key={model} value={model}>
-                        {premiumModelLabel(model)}
+                        {premiumModelLabel(model, messages)}
                       </option>
                     ))}
                   </select>
@@ -644,32 +997,34 @@ export function DashboardPage({ locale, messages }: Props) {
         </div>
       ) : null}
 
-      <div className="panel readingPanel">
-        <h2>{t(messages, "dashboard.history", "Past Readings")}</h2>
-        {history.length === 0 ? (
-          <p>{t(messages, "dashboard.no_history", "No reading history yet.")}</p>
-        ) : (
-          <div className="historyList">
-            {history.map((item) => (
-              <button
-                className="historyItem"
-                key={item.id}
-                onClick={() => {
-                  setAnimatingReading(null);
-                  setReading(item);
-                  setActiveQuestion(item.question);
-                  setDrawState("completed");
-                  setError("");
-                }}
-                type="button"
-              >
-                <strong>{formatTimestamp(item.created_at)}</strong>
-                <span>{item.question}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {!isPalmDashboard ? (
+        <div className="panel readingPanel">
+          <h2>{t(messages, "dashboard.history", "Past Readings")}</h2>
+          {history.length === 0 ? (
+            <p>{t(messages, "dashboard.no_history", "No reading history yet.")}</p>
+          ) : (
+            <div className="historyList">
+              {history.map((item) => (
+                <button
+                  className="historyItem"
+                  key={item.id}
+                  onClick={() => {
+                    setAnimatingReading(null);
+                    setReading(item);
+                    setActiveQuestion(item.question);
+                    setDrawState("completed");
+                    setError("");
+                  }}
+                  type="button"
+                >
+                  <strong>{formatTimestamp(item.created_at)}</strong>
+                  <span>{item.question}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </main>
   );
 }

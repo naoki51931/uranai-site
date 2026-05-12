@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
 import { getSeoContent } from "@/lib/seo";
+import { localizedPalmUrl } from "@/lib/site";
 
 type Props = {
   locale: Locale;
@@ -41,8 +42,11 @@ export function HomePage({ locale, messages }: Props) {
             <Link className="ghostButton" href={localizePath(locale, "/login")}>
               {t(messages, "home.cta.login", "Log In")}
             </Link>
+            <Link className="ghostButton" href={localizedPalmUrl(locale)}>
+              {t(messages, "home.cta.palm", "Palm Reading")}
+            </Link>
             <Link className="ghostButton" href={localizePath(locale, "/admin/login")}>
-              {t(messages, "home.cta.admin", "管理ログイン")}
+              {t(messages, "home.cta.admin", "Admin Login")}
             </Link>
           </div>
         </div>

@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirectToPreferredLocale } from "@/lib/locale-redirect";
 
-import { DEFAULT_LOCALE } from "@/lib/i18n-core";
-
-export default function SuccessRedirectPage() {
-  redirect(`/${DEFAULT_LOCALE}/success`);
+export default async function SuccessRedirectPage() {
+  await redirectToPreferredLocale("/success");
 }

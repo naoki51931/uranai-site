@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 
 import { HomePage } from "@/components/home-page";
+import { PlamHomePage } from "@/components/plam-home-page";
 import { getMessages, normalizeLocale } from "@/lib/i18n";
-import { buildLanguageAlternates, getLocaleLabel, localizedUrl } from "@/lib/site";
+import { buildLanguageAlternates, buildLanguageAlternatesForHost, getLocaleLabel, isPlamHost, localizedUrl, localizedUrlForHost } from "@/lib/site";
 import { buildLocaleJsonLd, getSeoContent } from "@/lib/seo";
 
 type Props = {
@@ -12,6 +14,29 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { lang } = await params;
   const locale = normalizeLocale(lang);
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  if (isPlamHost(host)) {
+    return {
+      title: `Palm Reading | Moon Arcana | ${getLocaleLabel(locale)}`,
+      description: "Dedicated palm reading landing page on Moon Arcana.",
+      alternates: {
+        canonical: localizedUrlForHost(host, locale),
+        languages: buildLanguageAlternatesForHost(host),
+      },
+      robots: {
+        index: true,
+        follow: true,
+      },
+      openGraph: {
+        title: "Palm Reading | Moon Arcana",
+        description: "Dedicated palm reading landing page on Moon Arcana.",
+        url: localizedUrlForHost(host, locale),
+        type: "website",
+      },
+    };
+  }
+
   const seo = getSeoContent(locale);
   const localeLabel = getLocaleLabel(locale);
   const openGraphLocales: Record<typeof locale, string> = {
@@ -59,7 +84,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function LocalizedHomePage({ params }: Props) {
   const { lang } = await params;
   const locale = normalizeLocale(lang);
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const { messages } = await getMessages(locale);
+  if (isPlamHost(host)) {
+    return <PlamHomePage locale={locale} messages={messages} />;
+  }
   const structuredData = buildLocaleJsonLd(locale);
 
   return (

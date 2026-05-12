@@ -568,7 +568,8 @@ a {
 }
 
 .premiumExplanationBody h4,
-.premiumExplanationBody p {
+.premiumExplanationBody p,
+.premiumExplanationBody ul {
   margin: 0;
 }
 
@@ -579,6 +580,15 @@ a {
 
 .premiumExplanationBody p {
   line-height: 1.85;
+}
+
+.premiumExplanationBody ul {
+  padding-left: 1.2rem;
+  line-height: 1.85;
+}
+
+.premiumExplanationBody li + li {
+  margin-top: 0.3rem;
 }
 
 .premiumModelRow {

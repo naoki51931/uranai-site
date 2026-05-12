@@ -4,13 +4,17 @@ import { SUPPORTED_LOCALES } from "@/lib/i18n-core";
 import { buildLanguageAlternates, localizedUrl } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return SUPPORTED_LOCALES.map((locale) => ({
-    url: localizedUrl(locale),
-    lastModified: new Date(),
-    changeFrequency: "weekly",
-    priority: 1,
-    alternates: {
-      languages: buildLanguageAlternates(),
-    },
-  }));
+  const publicPaths = ["", "/login", "/register", "/password-reset", "/reset-password", "/success", "/unsubscribe"] as const;
+
+  return SUPPORTED_LOCALES.flatMap((locale) =>
+    publicPaths.map((path) => ({
+      url: localizedUrl(locale, path),
+      lastModified: new Date(),
+      changeFrequency: path === "" ? "weekly" : "monthly",
+      priority: path === "" ? 1 : 0.6,
+      alternates: {
+        languages: buildLanguageAlternates(path),
+      },
+    })),
+  );
 }
