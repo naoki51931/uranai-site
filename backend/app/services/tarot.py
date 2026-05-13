@@ -39,6 +39,26 @@ def draw_three_card_reading(
     return localized_cards, interpretation
 
 
+def draw_single_card_reading(deck: list[dict], locale: str) -> dict:
+    chosen_card = random.choice(deck)
+    orientation = random.choice(["upright", "reversed"])
+    cards = localize_cards(
+        [
+            {
+                "position": "focus",
+                "slug": chosen_card["slug"],
+                "name": chosen_card["name"],
+                "orientation": orientation,
+                "keywords": chosen_card["keywords"],
+                "meaning": chosen_card["meaning"],
+                "image_url": chosen_card.get("image_url"),
+            }
+        ],
+        locale,
+    )
+    return cards[0]
+
+
 def serialize_cards(cards: list[dict]) -> str:
     return json.dumps(cards, ensure_ascii=False)
 

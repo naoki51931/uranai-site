@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import ReadingFeedback, ReadingFollowup, TarotReading, User
+from app.models import ReadingFeedback, ReadingFollowup, TarotReading, User, UserTarotLog
 from app.services.email import is_email_configured, send_email
 from app.services.tarot import deserialize_cards
 
@@ -93,6 +93,7 @@ async def followup_worker() -> None:
     while True:
         try:
             send_due_followups_once()
+            send_daily_lucky_emails_once()
         except Exception:  # pragma: no cover - defensive background loop
             logger.exception("Followup worker iteration failed")
         await asyncio.sleep(settings.followup_poll_seconds)
@@ -100,3 +101,80 @@ async def followup_worker() -> None:
 
 def feedback_already_recorded(db: Session, followup_id: int) -> bool:
     return db.query(ReadingFeedback).filter(ReadingFeedback.followup_id == followup_id).first() is not None
+
+
+def _recent_reversed_streak(db: Session, user_id: int) -> int:
+    recent_logs = (
+        db.query(UserTarotLog)
+        .filter(UserTarotLog.user_id == user_id)
+        .order_by(UserTarotLog.created_at.desc(), UserTarotLog.id.desc())
+        .limit(3)
+        .all()
+    )
+    if len(recent_logs) < 3:
+        return 0
+    if any(log.orientation != "reversed" for log in recent_logs):
+        return 0
+    return 3
+
+
+def render_daily_lucky_email(user: User, log: UserTarotLog, reversed_streak: int) -> tuple[str, str]:
+    subject = "今日のラッキーアクション | Moon Arcana"
+    streak_copy = ""
+    if reversed_streak >= 3:
+        streak_copy = "\n最近3回連続で逆位置が続いているため、今日は拡大より整え直しを優先してください。"
+    body = (
+        f"{user.full_name}さん、おはようございます。\n\n"
+        f"前回のカード: {log.card_name} ({log.orientation})\n"
+        f"今日のラッキーアクション: {log.summary_text}\n"
+        f"{streak_copy}\n\n"
+        "昨日ログインがなかったため、短いヒントだけ先にお届けしました。"
+    )
+    return subject, body
+
+
+def send_daily_lucky_emails_once() -> int:
+    if not is_email_configured():
+        return 0
+
+    settings = get_settings()
+    now = datetime.utcnow()
+    if now.hour < settings.daily_lucky_hour_utc:
+        return 0
+
+    today_cutoff = now.replace(hour=settings.daily_lucky_hour_utc, minute=0, second=0, microsecond=0)
+    yesterday_cutoff = today_cutoff - timedelta(days=1)
+    db = SessionLocal()
+    sent_count = 0
+    try:
+        users = (
+            db.query(User)
+            .filter(
+                User.daily_lucky_opt_in.is_(True),
+                (User.daily_lucky_sent_at.is_(None) | (User.daily_lucky_sent_at < today_cutoff)),
+                (User.last_login_at.is_(None) | (User.last_login_at < yesterday_cutoff)),
+            )
+            .order_by(User.id.asc())
+            .limit(50)
+            .all()
+        )
+        for user in users:
+            latest_log = (
+                db.query(UserTarotLog)
+                .filter(UserTarotLog.user_id == user.id)
+                .order_by(UserTarotLog.created_at.desc(), UserTarotLog.id.desc())
+                .first()
+            )
+            if not latest_log:
+                continue
+            try:
+                subject, body = render_daily_lucky_email(user, latest_log, _recent_reversed_streak(db, user.id))
+                send_email(recipient=user.email, subject=subject, body=body)
+                user.daily_lucky_sent_at = now
+                sent_count += 1
+            except Exception:  # pragma: no cover - SMTP environment dependent
+                logger.exception("Failed to send daily lucky email")
+        db.commit()
+        return sent_count
+    finally:
+        db.close()

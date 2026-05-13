@@ -2,20 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 import redis
 
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user, has_paid_access, is_billing_enabled
-from app.models import PalmReading, TarotCard, TarotReading, User
+from app.models import GuestTarotLead, PalmReading, TarotCard, TarotReading, User, UserTarotLog
 from app.schemas import (
+    ActivityFeedItemResponse,
     AdminDeckAssetsResponse,
+    GuestReadingPreviewRequest,
+    GuestReadingPreviewResponse,
     PalmReadingResponse,
     PalmReadingRerunRequest,
     PremiumReadingExplanationResponse,
+    PublicShareReadingResponse,
     ReadingRequest,
     ReadingResponse,
 )
@@ -37,7 +43,7 @@ from app.services.reading_limits import (
     get_monthly_reading_limit,
     is_monthly_limit_exempt,
 )
-from app.services.tarot import deserialize_cards, draw_three_card_reading, serialize_cards
+from app.services.tarot import deserialize_cards, draw_single_card_reading, draw_three_card_reading, serialize_cards
 from app.services.tarot_localization import build_interpretation, localize_cards, normalize_locale
 
 
@@ -84,6 +90,15 @@ def _load_premium_explanations(reading: TarotReading) -> dict[str, dict[str, str
     return {str(key): value for key, value in parsed.items() if isinstance(value, dict)}
 
 
+def _ensure_public_share_token(db: Session, reading: TarotReading) -> None:
+    if reading.public_share_token:
+        return
+    reading.public_share_token = secrets.token_urlsafe(16)
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+
+
 def _hydrate_cards(db: Session, cards_json: str, locale: str) -> list[dict]:
     cards = deserialize_cards(cards_json)
     slugs = [card.get("slug") for card in cards if card.get("slug")]
@@ -114,13 +129,25 @@ def _build_response(
     db: Session,
     locale: str,
 ) -> ReadingResponse:
+    _ensure_public_share_token(db, reading)
     cards = _hydrate_cards(db, reading.cards_json, locale)
+    if reading.spread_name == "three-card" and len(cards) >= 3:
+        full_text = build_interpretation(reading.question, cards, locale)
+        basic_text = cards[1]["meaning"]
+    else:
+        full_text = reading.interpretation
+        basic_text = reading.learning_context or cards[0]["meaning"] if cards else reading.interpretation
+    member_preview_text = full_text if paid_access else _truncate_preview_text(full_text)
     return ReadingResponse(
         id=reading.id,
         spread_name=reading.spread_name,
         question=reading.question,
         cards=cards,
-        interpretation=build_interpretation(reading.question, cards, locale),
+        interpretation=full_text,
+        basic_text=basic_text,
+        member_preview_text=member_preview_text,
+        member_text_locked=not paid_access,
+        public_share_token=reading.public_share_token,
         created_at=reading.created_at,
         free_readings_used=free_readings_used,
         has_paid_access=paid_access,
@@ -138,6 +165,110 @@ def _build_palm_response(reading: PalmReading) -> PalmReadingResponse:
         interpretation=reading.interpretation,
         created_at=reading.created_at,
     )
+
+
+def _truncate_preview_text(text: str, max_length: int = 100) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 1].rstrip()}…"
+
+
+def _guest_question(locale: str) -> str:
+    labels = {
+        "ja": "今日の運勢",
+        "en": "Today's guidance",
+        "ru": "Подсказка на сегодня",
+        "de": "Hinweis fuer heute",
+        "fr": "Guidance du jour",
+        "it": "Guida di oggi",
+        "zh-cn": "今日指引",
+        "zh-tw": "今日指引",
+        "hi": "आज का मार्गदर्शन",
+        "pt": "Orientacao de hoje",
+        "es": "Guia de hoy",
+    }
+    return labels.get(normalize_locale(locale), "Today's guidance")
+
+
+def _build_guest_text(card: dict, locale: str) -> tuple[str, str]:
+    normalized_locale = normalize_locale(locale)
+    card_name = str(card.get("name", ""))
+    orientation = str(card.get("orientation", "upright"))
+    keyword = str(card.get("keywords", ["focus"])[0])
+    meaning = str(card.get("meaning", "")).strip()
+    orientation_labels = {
+        "ja": ("正位置", "逆位置"),
+        "en": ("Upright", "Reversed"),
+        "ru": ("Прямое", "Перевернутое"),
+        "de": ("Aufrecht", "Umgekehrt"),
+        "fr": ("Droite", "Renversee"),
+        "it": ("Dritta", "Rovesciata"),
+        "zh-cn": ("正位", "逆位"),
+        "zh-tw": ("正位", "逆位"),
+        "hi": ("सीधा", "उल्टा"),
+        "pt": ("Direita", "Invertida"),
+        "es": ("Derecha", "Invertida"),
+    }
+    upright_label, reversed_label = orientation_labels.get(normalized_locale, orientation_labels["en"])
+    orientation_text = upright_label if orientation != "reversed" else reversed_label
+
+    if normalized_locale == "ja":
+        free_text = f"{card_name} {orientation_text}。{meaning}"
+        member_text = (
+            f"{free_text} 会員向けの詳細では、このカードが今日の判断軸として示す {keyword} の扱い方、"
+            "避けたい思考の癖、そして小さく試すべきラッキーアクションまで深掘りします。"
+        )
+        return free_text, member_text
+
+    free_text = f"{card_name} ({orientation_text}). {meaning}"
+    member_text = (
+        f"{free_text} Member-only detail expands on how to use {keyword} as today's decision axis, "
+        "what pattern to avoid, and which small lucky action is worth trying first."
+    )
+    return free_text, member_text
+
+
+def _log_user_tarot_event(db: Session, user_id: int, reading: TarotReading, cards: list[dict], fallback_summary: str) -> None:
+    for card in cards:
+        db.add(
+            UserTarotLog(
+                user_id=user_id,
+                reading_id=reading.id,
+                spread_name=reading.spread_name,
+                question=reading.question,
+                card_slug=card["slug"],
+                card_name=card["name"],
+                orientation=card["orientation"],
+                position=card["position"],
+                summary_text=_truncate_preview_text(card.get("meaning") or fallback_summary, 140),
+            )
+        )
+
+
+def _build_share_title(question: str, cards: list[dict], locale: str) -> str:
+    normalized_locale = normalize_locale(locale)
+    if normalized_locale == "ja":
+        return f"「{question}」の鑑定結果"
+    if normalized_locale == "ru":
+        return f"Результат расклада | {question}"
+    if normalized_locale == "de":
+        return f"Reading-Ergebnis | {question}"
+    if normalized_locale == "fr":
+        return f"Resultat de lecture | {question}"
+    if normalized_locale == "it":
+        return f"Risultato della lettura | {question}"
+    if normalized_locale == "zh-cn":
+        return f"占卜结果 | {question}"
+    if normalized_locale == "zh-tw":
+        return f"占卜結果 | {question}"
+    if normalized_locale == "hi":
+        return f"रीडिंग परिणाम | {question}"
+    if normalized_locale == "pt":
+        return f"Resultado da leitura | {question}"
+    if normalized_locale == "es":
+        return f"Resultado de la lectura | {question}"
+    return f"Reading Result | {question}"
 
 
 @router.post("", response_model=ReadingResponse)
@@ -169,9 +300,11 @@ def create_reading(
         interpretation=interpretation,
         strategy_version=guidance.strategy_version,
         learning_context=guidance.context,
+        public_share_token=secrets.token_urlsafe(16),
     )
     db.add(reading)
     db.flush()
+    _log_user_tarot_event(db, current_user.id, reading, cards, interpretation)
     schedule_followup(db, current_user, reading)
 
     db.commit()
@@ -185,6 +318,70 @@ def create_reading(
     except Exception:
         pass
     return _build_response(reading, monthly_readings_used + 1, paid_access, db, locale)
+
+
+@router.post("/guest-preview", response_model=GuestReadingPreviewResponse)
+def create_guest_preview(payload: GuestReadingPreviewRequest, db: Session = Depends(get_db)):
+    locale = normalize_locale(payload.locale)
+    normalized_email = payload.email.strip().lower()
+    deck = [tarot_card_to_dict(card) for card in sorted(db.query(TarotCard).all(), key=tarot_sort_key)]
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Tarot deck is not configured")
+
+    card = draw_single_card_reading(deck, locale)
+    free_text, member_text = _build_guest_text(card, locale)
+    lead = GuestTarotLead(
+        email=normalized_email,
+        locale=locale,
+        question=_guest_question(locale),
+        card_json=serialize_cards([card]),
+        free_text=free_text,
+        member_text=member_text,
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+
+    existing_user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+    return GuestReadingPreviewResponse(
+        lead_id=lead.id,
+        email=normalized_email,
+        question=lead.question,
+        card=card,
+        free_text=free_text,
+        member_preview_text=_truncate_preview_text(member_text),
+        member_text_locked=True,
+        auth_mode="login" if existing_user else "register",
+    )
+
+
+@router.get("/activity-feed", response_model=list[ActivityFeedItemResponse])
+def activity_feed(locale: str = Query(default="ja"), db: Session = Depends(get_db)):
+    normalized_locale = normalize_locale(locale)
+    logs = db.query(UserTarotLog).order_by(UserTarotLog.created_at.desc(), UserTarotLog.id.desc()).limit(12).all()
+    templates = {
+        "ja": "今、匿名ユーザーが「{card_name}」を引きました。",
+        "en": 'An anonymous user just drew "{card_name}".',
+        "ru": 'Анонимный пользователь только что вытянул карту "{card_name}".',
+        "de": 'Gerade hat ein anonymer Nutzer "{card_name}" gezogen.',
+        "fr": 'Un utilisateur anonyme vient de tirer "{card_name}".',
+        "it": 'Un utente anonimo ha appena estratto "{card_name}".',
+        "zh-cn": '刚刚有匿名用户抽到了“{card_name}”。',
+        "zh-tw": '剛剛有匿名使用者抽到了「{card_name}」。',
+        "hi": 'अभी एक गुमनाम उपयोगकर्ता ने "{card_name}" निकाला है।',
+        "pt": 'Um usuario anonimo acabou de tirar "{card_name}".',
+        "es": 'Un usuario anonimo acaba de sacar "{card_name}".',
+    }
+    template = templates.get(normalized_locale, templates["en"])
+    return [
+        ActivityFeedItemResponse(
+            id=log.id,
+            message=template.format(card_name=log.card_name),
+            card_name=log.card_name,
+            created_at=log.created_at,
+        )
+        for log in logs
+    ]
 
 
 @router.get("/latest", response_model=ReadingResponse)
@@ -417,3 +614,20 @@ def premium_explanation(
         except Exception:
             pass
     return PremiumReadingExplanationResponse(explanation=explanation, cached=False)
+
+
+@router.get("/share/{share_token}", response_model=PublicShareReadingResponse)
+def public_share_reading(share_token: str, locale: str = Query(default="ja"), db: Session = Depends(get_db)):
+    locale = normalize_locale(locale)
+    reading = db.query(TarotReading).filter(TarotReading.public_share_token == share_token).first()
+    if not reading:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reading not found")
+    cards = _hydrate_cards(db, reading.cards_json, locale)
+    return PublicShareReadingResponse(
+        question=reading.question,
+        spread_name=reading.spread_name,
+        created_at=reading.created_at,
+        cards=cards,
+        summary_text=_truncate_preview_text(reading.learning_context or reading.interpretation, 140),
+        share_title=_build_share_title(reading.question, cards, locale),
+    )

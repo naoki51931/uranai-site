@@ -17,6 +17,9 @@ class User(Base):
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     subscription_status: Mapped[str] = mapped_column(String(64), default="inactive", nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    daily_lucky_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    daily_lucky_opt_in: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -43,6 +46,33 @@ class TarotReading(Base):
     strategy_version: Mapped[str] = mapped_column(String(64), default="baseline-v1", nullable=False)
     learning_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     premium_explanations_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    public_share_token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GuestTarotLead(Base):
+    __tablename__ = "guest_tarot_leads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    locale: Mapped[str] = mapped_column(String(8), nullable=False, default="ja")
+    question: Mapped[str] = mapped_column(String(255), nullable=False)
+    card_json: Mapped[str] = mapped_column(Text, nullable=False)
+    free_text: Mapped[str] = mapped_column(Text, nullable=False)
+    member_text: Mapped[str] = mapped_column(Text, nullable=False)
+    claimed_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SocialAccount(Base):
+    __tablename__ = "social_accounts"
+    __table_args__ = (UniqueConstraint("provider", "provider_user_id", name="uq_social_provider_subject"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -111,3 +141,19 @@ class TranslationEntry(Base):
     key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class UserTarotLog(Base):
+    __tablename__ = "user_tarot_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    reading_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    spread_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    question: Mapped[str] = mapped_column(String(500), nullable=False)
+    card_slug: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    card_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    orientation: Mapped[str] = mapped_column(String(32), nullable=False)
+    position: Mapped[str] = mapped_column(String(32), nullable=False)
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

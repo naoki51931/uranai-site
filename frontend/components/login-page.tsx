@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
+import { SocialAuthButtons } from "@/components/social-auth-buttons";
 
 type AuthResponse = {
   requires_mfa: boolean;
@@ -29,7 +30,9 @@ type Props = {
 
 export function LoginPage({ locale, messages }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
+  const [leadId, setLeadId] = useState<number | null>(null);
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [challengeId, setChallengeId] = useState<string | null>(null);
@@ -38,6 +41,17 @@ export function LoginPage({ locale, messages }: Props) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const initialEmail = searchParams.get("email");
+    const initialLeadId = searchParams.get("lead_id");
+    if (initialEmail) {
+      setEmail(initialEmail);
+    }
+    if (initialLeadId && !Number.isNaN(Number(initialLeadId))) {
+      setLeadId(Number(initialLeadId));
+    }
+  }, [searchParams]);
+
   const submitCredentials = async () => {
     setLoading(true);
     setError("");
@@ -45,7 +59,7 @@ export function LoginPage({ locale, messages }: Props) {
     try {
       const response = await apiFetch<AuthResponse>("/v1/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password, locale }),
+        body: JSON.stringify({ email, password, locale, lead_id: leadId }),
       });
       if (response.access_token) {
         localStorage.setItem("token", response.access_token);
@@ -80,7 +94,7 @@ export function LoginPage({ locale, messages }: Props) {
     try {
       const response = await apiFetch<VerifyResponse>("/v1/auth/login/verify", {
         method: "POST",
-        body: JSON.stringify({ challenge_id: challengeId, code: verificationCode }),
+        body: JSON.stringify({ challenge_id: challengeId, code: verificationCode, lead_id: leadId }),
       });
       localStorage.setItem("token", response.access_token);
       router.push(localizePath(locale, "/dashboard"));
@@ -109,38 +123,41 @@ export function LoginPage({ locale, messages }: Props) {
           <Link href={localizePath(locale, "/admin/login")}>{t(messages, "login.admin_link", "管理ログイン")}</Link>
         </p>
         {!challengeId ? (
-          <form onSubmit={onSubmitCredentials}>
-            <div className="field">
-              <label htmlFor="email">{t(messages, "login.email", "Email")}</label>
-              <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            </div>
-            <div className="field">
-              <label htmlFor="password">{t(messages, "login.password", "Password")}</label>
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-              <label className="checkboxRow" htmlFor="show-password">
+          <>
+            <form onSubmit={onSubmitCredentials}>
+              <div className="field">
+                <label htmlFor="email">{t(messages, "login.email", "Email")}</label>
+                <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+              </div>
+              <div className="field">
+                <label htmlFor="password">{t(messages, "login.password", "Password")}</label>
                 <input
-                  id="show-password"
-                  type="checkbox"
-                  checked={showPassword}
-                  onChange={(event) => setShowPassword(event.target.checked)}
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
                 />
-                {t(messages, "login.show_password", "Show password")}
-              </label>
-              <Link href={localizePath(locale, "/password-reset")}>
-                {t(messages, "login.forgot_password", "Forgot your password?")}
-              </Link>
-            </div>
-            {error ? <div className="error">{error}</div> : null}
-            <button className="button" disabled={loading} type="submit">
-              {loading ? t(messages, "login.loading", "Logging in...") : t(messages, "login.submit", "Go to Dashboard")}
-            </button>
-          </form>
+                <label className="checkboxRow" htmlFor="show-password">
+                  <input
+                    id="show-password"
+                    type="checkbox"
+                    checked={showPassword}
+                    onChange={(event) => setShowPassword(event.target.checked)}
+                  />
+                  {t(messages, "login.show_password", "Show password")}
+                </label>
+                <Link href={localizePath(locale, "/password-reset")}>
+                  {t(messages, "login.forgot_password", "Forgot your password?")}
+                </Link>
+              </div>
+              {error ? <div className="error">{error}</div> : null}
+              <button className="button" disabled={loading} type="submit">
+                {loading ? t(messages, "login.loading", "Logging in...") : t(messages, "login.submit", "Go to Dashboard")}
+              </button>
+            </form>
+            <SocialAuthButtons leadId={leadId} locale={locale} messages={messages} mode="login" />
+          </>
         ) : (
           <form onSubmit={onSubmitVerification}>
             <p>{challengeNotice || t(messages, "login.mfa_notice", "We sent a verification code to your email. Enter it below to continue.")}</p>

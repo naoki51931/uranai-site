@@ -8,12 +8,14 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8)
     full_name: str = Field(min_length=1, max_length=255)
     locale: str = Field(default="ja", min_length=2, max_length=8, pattern="^[a-zA-Z0-9-]+$")
+    lead_id: int | None = None
 
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
     locale: str = Field(default="ja", min_length=2, max_length=8, pattern="^[a-zA-Z0-9-]+$")
+    lead_id: int | None = None
 
 
 class PasswordResetRequest(BaseModel):
@@ -40,6 +42,10 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class OAuthStartResponse(BaseModel):
+    authorization_url: str
+
+
 class LoginChallengeResponse(BaseModel):
     requires_mfa: bool
     message: str
@@ -52,6 +58,7 @@ class LoginChallengeResponse(BaseModel):
 class LoginVerifyRequest(BaseModel):
     challenge_id: str = Field(min_length=20, max_length=255)
     code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
+    lead_id: int | None = None
 
 
 class UserProfile(BaseModel):
@@ -65,6 +72,11 @@ class UserProfile(BaseModel):
     subscription_status: str
     has_paid_access: bool
     billing_enabled: bool
+    daily_lucky_opt_in: bool
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    daily_lucky_opt_in: bool
 
 
 class ReadingRequest(BaseModel):
@@ -89,14 +101,50 @@ class ReadingResponse(BaseModel):
     question: str
     cards: list[ReadingCard]
     interpretation: str
+    basic_text: str
+    member_preview_text: str
+    member_text_locked: bool
+    public_share_token: str | None = None
     created_at: datetime
     free_readings_used: int
     has_paid_access: bool
 
 
+class ActivityFeedItemResponse(BaseModel):
+    id: int
+    message: str
+    card_name: str
+    created_at: datetime
+
+
+class GuestReadingPreviewRequest(BaseModel):
+    email: EmailStr
+    locale: str = Field(default="ja", min_length=2, max_length=8, pattern="^[a-zA-Z0-9-]+$")
+
+
+class GuestReadingPreviewResponse(BaseModel):
+    lead_id: int
+    email: EmailStr
+    question: str
+    card: ReadingCard
+    free_text: str
+    member_preview_text: str
+    member_text_locked: bool = True
+    auth_mode: str = Field(pattern="^(login|register)$")
+
+
 class PremiumReadingExplanationResponse(BaseModel):
     explanation: str | None = None
     cached: bool = False
+
+
+class PublicShareReadingResponse(BaseModel):
+    question: str
+    spread_name: str
+    created_at: datetime
+    cards: list[ReadingCard]
+    summary_text: str
+    share_title: str
 
 
 class PalmReadingResponse(BaseModel):

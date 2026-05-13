@@ -27,7 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: "Moon Arcana",
-    description: "Tarot reading app with FastAPI, Next.js, feedback loops, and learning support",
+    description: "Card-based digital entertainment with AI-generated text and online premium content",
     alternates: {
       canonical: getSiteUrl(),
       languages: {

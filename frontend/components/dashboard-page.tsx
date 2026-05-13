@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { PreDrawAnimation } from "@/components/tarot/pre-draw-animation";
 import { ApiRequestError, apiFetch, resolveApiAssetUrl } from "@/lib/api";
+import { getDashboardSettingsCopy } from "@/lib/compliance";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
 import { isPlamHost, localizedUrl } from "@/lib/site";
@@ -21,6 +22,7 @@ type Profile = {
   subscription_status: string;
   has_paid_access: boolean;
   billing_enabled: boolean;
+  daily_lucky_opt_in: boolean;
 };
 
 type ReadingCard = {
@@ -35,8 +37,13 @@ type ReadingCard = {
 
 type Reading = {
   id: number;
+  spread_name: string;
   question: string;
   interpretation: string;
+  basic_text: string;
+  member_preview_text: string;
+  member_text_locked: boolean;
+  public_share_token: string | null;
   cards: ReadingCard[];
   created_at: string;
   free_readings_used: number;
@@ -96,6 +103,57 @@ function wait(ms: number) {
 
 function truncateText(value: string, maxLength: number) {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function readingIntroText(locale: Locale, question: string, spreadName: string | undefined) {
+  if (spreadName === "single-card") {
+    const singleCardCopy: Record<Locale, string> = {
+      ja: `「${question}」に対して、この1枚が今日持ち帰るべき焦点を示しています。`,
+      en: `For "${question}", this single card shows the main theme to carry into today.`,
+      ru: `Для вопроса «${question}» эта одна карта показывает главную тему, которую стоит взять с собой в сегодняшний день.`,
+      de: `Zu der Frage „${question}“ zeigt diese eine Karte das Hauptthema, das du heute mitnehmen solltest.`,
+      fr: `Pour la question « ${question} », cette carte unique montre le theme principal a garder avec vous aujourd'hui.`,
+      it: `Per la domanda "${question}", questa singola carta mostra il tema principale da portare con te oggi.`,
+      "zh-cn": `针对“${question}”，这一张牌显示了今天最值得带走的核心主题。`,
+      "zh-tw": `針對「${question}」，這一張牌顯示了今天最值得帶走的核心主題。`,
+      hi: `“${question}” के लिए यह एक कार्ड आज साथ लेकर चलने वाली मुख्य थीम दिखाता है।`,
+      pt: `Para a pergunta "${question}", esta carta mostra o tema principal para levar com voce hoje.`,
+      es: `Para la pregunta "${question}", esta carta muestra el tema principal que deberias llevar contigo hoy.`,
+    };
+    return singleCardCopy[locale];
+  }
+
+  const spreadCopy: Record<Locale, string> = {
+    ja: `「${question}」という問いに対して、カードは次の流れを示しています。`,
+    en: `For the question "${question}", the cards show the following flow.`,
+    ru: `Для вопроса «${question}» карты показывают следующий ход событий.`,
+    de: `Zur Frage „${question}“ zeigen die Karten den folgenden Verlauf.`,
+    fr: `Pour la question « ${question} », les cartes montrent le flux suivant.`,
+    it: `Per la domanda "${question}", le carte mostrano il seguente flusso.`,
+    "zh-cn": `针对“${question}”这个问题，这组牌展示了接下来的发展脉络。`,
+    "zh-tw": `針對「${question}」這個問題，這組牌展示了接下來的發展脈絡。`,
+    hi: `“${question}” प्रश्न के लिए कार्ड यह अगला प्रवाह दिखाते हैं।`,
+    pt: `Para a pergunta "${question}", as cartas mostram o seguinte fluxo.`,
+    es: `Para la pregunta "${question}", las cartas muestran el siguiente flujo.`,
+  };
+  return spreadCopy[locale];
+}
+
+function shareButtonText(locale: Locale) {
+  const labels: Record<Locale, string> = {
+    ja: "Xで共有",
+    en: "Share on X",
+    ru: "Поделиться в X",
+    de: "Auf X teilen",
+    fr: "Partager sur X",
+    it: "Condividi su X",
+    "zh-cn": "分享到 X",
+    "zh-tw": "分享到 X",
+    hi: "X पर शेयर करें",
+    pt: "Compartilhar no X",
+    es: "Compartir en X",
+  };
+  return labels[locale];
 }
 
 function renderInlinePremiumText(text: string) {
@@ -224,6 +282,7 @@ function usePrefersReducedMotion() {
 export function DashboardPage({ locale, messages }: Props) {
   const router = useRouter();
   const prefersReducedMotion = usePrefersReducedMotion();
+  const dashboardSettingsCopy = getDashboardSettingsCopy(locale);
   const [token, setToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [question, setQuestion] = useState("");
@@ -249,6 +308,7 @@ export function DashboardPage({ locale, messages }: Props) {
   const [palmError, setPalmError] = useState("");
   const [error, setError] = useState("");
   const [premiumError, setPremiumError] = useState("");
+  const [notificationSaving, setNotificationSaving] = useState(false);
 
   const readingsPath = `/v1/readings?locale=${encodeURIComponent(locale)}`;
 
@@ -375,6 +435,28 @@ export function DashboardPage({ locale, messages }: Props) {
     setProfile(nextProfile);
   };
 
+  const updateDailyNotificationPreference = async (nextValue: boolean) => {
+    if (!token) {
+      return;
+    }
+    setNotificationSaving(true);
+    try {
+      const nextProfile = await apiFetch<Profile>(
+        "/v1/auth/notification-preferences",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ daily_lucky_opt_in: nextValue }),
+        },
+        token,
+      );
+      setProfile(nextProfile);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t(messages, "dashboard.error", "Failed to update notification settings"));
+    } finally {
+      setNotificationSaving(false);
+    }
+  };
+
   const refreshReadings = async (latestReadingId?: number) => {
     if (!token) {
       return;
@@ -470,17 +552,17 @@ export function DashboardPage({ locale, messages }: Props) {
 
   const positionLabel = (position: string) => {
     const labels: Record<Locale, Record<string, string>> = {
-      ja: { past: "過去", present: "現在", future: "未来" },
-      en: { past: "Past", present: "Present", future: "Future" },
-      ru: { past: "Прошлое", present: "Настоящее", future: "Будущее" },
-      de: { past: "Vergangenheit", present: "Gegenwart", future: "Zukunft" },
-      fr: { past: "Passe", present: "Present", future: "Avenir" },
-      it: { past: "Passato", present: "Presente", future: "Futuro" },
-      "zh-cn": { past: "过去", present: "现在", future: "未来" },
-      "zh-tw": { past: "過去", present: "現在", future: "未來" },
-      hi: { past: "भूत", present: "वर्तमान", future: "भविष्य" },
-      pt: { past: "Passado", present: "Presente", future: "Futuro" },
-      es: { past: "Pasado", present: "Presente", future: "Futuro" },
+      ja: { past: "過去", present: "現在", future: "未来", focus: "今日の焦点" },
+      en: { past: "Past", present: "Present", future: "Future", focus: "Today's Focus" },
+      ru: { past: "Прошлое", present: "Настоящее", future: "Будущее", focus: "Фокус дня" },
+      de: { past: "Vergangenheit", present: "Gegenwart", future: "Zukunft", focus: "Fokus des Tages" },
+      fr: { past: "Passe", present: "Present", future: "Avenir", focus: "Focus du jour" },
+      it: { past: "Passato", present: "Presente", future: "Futuro", focus: "Focus del giorno" },
+      "zh-cn": { past: "过去", present: "现在", future: "未来", focus: "今日焦点" },
+      "zh-tw": { past: "過去", present: "現在", future: "未來", focus: "今日焦點" },
+      hi: { past: "भूत", present: "वर्तमान", future: "भविष्य", focus: "आज का फोकस" },
+      pt: { past: "Passado", present: "Presente", future: "Futuro", focus: "Foco do dia" },
+      es: { past: "Pasado", present: "Presente", future: "Futuro", focus: "Enfoque del dia" },
     };
     return labels[locale][position] ?? position;
   };
@@ -506,47 +588,38 @@ export function DashboardPage({ locale, messages }: Props) {
     if (!activeQuestion) {
       return "";
     }
-    if (locale === "en") {
-      return `For the question "${activeQuestion}", the cards show the following flow.`;
-    }
-    return `「${activeQuestion}」という問いに対して、カードは次の流れを示しています。`;
+    return readingIntroText(locale, activeQuestion, reading?.spread_name);
   })();
 
-  const shareButtonLabel = locale === "en" ? "Share on X" : "Xで共有";
+  const shareButtonLabel = shareButtonText(locale);
   const shareUrl = localizedUrl(locale);
   const shareText = reading
     ? (() => {
-        const cardsSummary = reading.cards
-          .map((card) => `${positionLabel(card.position)}: ${card.name} (${orientationLabel(card.orientation)})`)
-          .join(" / ");
-        const interpretation = truncateText(reading.interpretation.replace(/\s+/g, " ").trim(), 100);
+        const primaryCard =
+          reading.spread_name === "single-card"
+            ? reading.cards[0]
+            : reading.cards.find((card) => card.position === "present") ?? reading.cards[0];
+        const interpretation = reading.interpretation.replace(/\s+/g, " ").trim();
 
         if (locale === "en") {
-          return [
-            `My tarot reading for "${reading.question}"`,
-            cardsSummary,
-            interpretation,
-            "#MoonArcana #TarotReading",
-          ].join("\n");
+          const compact = `${reading.question} / ${primaryCard?.name ?? ""} ${primaryCard ? `(${orientationLabel(primaryCard.orientation)})` : ""} / ${interpretation} #MoonArcana #TarotReading`;
+          return truncateText(compact, 140);
         }
 
-        return [
-          `「${reading.question}」の占い結果`,
-          cardsSummary,
-          interpretation,
-          "#MoonArcana #タロット占い",
-        ].join("\n");
+        const compact = `「${reading.question}」 / ${primaryCard?.name ?? ""}${primaryCard ? `(${orientationLabel(primaryCard.orientation)})` : ""} / ${interpretation} #MoonArcana #タロット占い`;
+        return truncateText(compact, 140);
       })()
     : "";
 
   const shareOnX = () => {
-    if (!reading) {
+    if (!reading || !reading.public_share_token) {
       return;
     }
+    const readingShareUrl = localizedUrl(locale, `/share/${reading.public_share_token}`);
 
     const params = new URLSearchParams({
       text: shareText,
-      url: shareUrl,
+      url: readingShareUrl,
     });
 
     window.open(`https://x.com/intent/post?${params.toString()}`, "_blank", "noopener,noreferrer");
@@ -728,14 +801,31 @@ export function DashboardPage({ locale, messages }: Props) {
       </div>
 
       <div className="panel readingPanel">
-        <h2>{t(messages, "dashboard.settings_title", "AI Settings")}</h2>
+        <h2>{t(messages, "dashboard.notifications_title", "Daily delivery settings")}</h2>
         <p>
           {t(
             messages,
-            "dashboard.settings_copy",
-            "Choose the AI model used for premium explanations on your dashboard. Gemini can be selected here.",
+            "dashboard.notifications_copy",
+            "Control whether Moon Arcana sends the daily lucky action email when you have not logged in since yesterday.",
           )}
         </p>
+        <label className="checkboxRow" htmlFor="daily-lucky-opt-in">
+          <input
+            checked={Boolean(profile?.daily_lucky_opt_in)}
+            disabled={!profile || notificationSaving}
+            id="daily-lucky-opt-in"
+            onChange={(event) => void updateDailyNotificationPreference(event.target.checked)}
+            type="checkbox"
+          />
+          {profile?.daily_lucky_opt_in
+            ? t(messages, "dashboard.notifications_on", "Daily lucky action email is enabled")
+            : t(messages, "dashboard.notifications_off", "Daily lucky action email is disabled")}
+        </label>
+      </div>
+
+      <div className="panel readingPanel">
+        <h2>{t(messages, "dashboard.settings_title", "AI Settings")}</h2>
+        <p>{dashboardSettingsCopy}</p>
         <div className="premiumModelRow">
           <label className="premiumModelField" htmlFor="dashboard-ai-model">
             <span>{t(messages, "dashboard.premium_model", "Model")}</span>
@@ -950,7 +1040,7 @@ export function DashboardPage({ locale, messages }: Props) {
                       src={resolveApiAssetUrl(card.image_url) ?? undefined}
                     />
                   ) : (
-                    <div className="readingArtworkPlaceholder">No image</div>
+                    <div className="readingArtworkPlaceholder">{t(messages, "share.no_image", "No image")}</div>
                   )}
                 </div>
                 <strong>{card.name}</strong>
@@ -960,7 +1050,30 @@ export function DashboardPage({ locale, messages }: Props) {
               </div>
             ))}
           </div>
-          <p>{reading.interpretation}</p>
+          <div className="readingResultBlocks">
+            <div className="panel hookResultSection">
+              <h3>{t(messages, "dashboard.basic_title", "Basic insight")}</h3>
+              <p>{reading.basic_text}</p>
+            </div>
+            <div className={`panel hookResultSection${reading.member_text_locked ? " isLocked" : ""}`}>
+              <h3>{t(messages, "dashboard.member_title", "Detailed insight")}</h3>
+              <p className={reading.member_text_locked ? "blurredCopy" : undefined}>
+                {reading.has_paid_access ? reading.interpretation : reading.member_preview_text}
+              </p>
+              {reading.member_text_locked ? (
+                <div className="hookLockOverlay">
+                  <p>{t(messages, "dashboard.member_copy", "Upgrade to unlock the full detailed interpretation.")}</p>
+                  {profile?.billing_enabled ? (
+                    <div className="ctaRow">
+                      <button className="button" disabled={upgradeDisabled} onClick={startCheckout} type="button">
+                        {upgradeLabel}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
           <div className="shareRow">
             <button className="ghostButton shareButton" onClick={shareOnX} type="button">
               {shareButtonLabel}

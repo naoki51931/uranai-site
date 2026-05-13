@@ -19,7 +19,7 @@ const body = Manrope({
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: "Moon Arcana",
-  description: "Tarot reading app with FastAPI, Next.js, feedback loops, and learning support",
+  description: "Card-based digital entertainment with AI-generated text and online premium content",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

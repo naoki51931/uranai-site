@@ -1,11 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
+import { SocialAuthButtons } from "@/components/social-auth-buttons";
 
 type AuthResponse = {
   requires_mfa: boolean;
@@ -28,8 +29,10 @@ type Props = {
 
 export function RegisterPage({ locale, messages }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [leadId, setLeadId] = useState<number | null>(null);
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [challengeId, setChallengeId] = useState<string | null>(null);
@@ -38,6 +41,17 @@ export function RegisterPage({ locale, messages }: Props) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const initialEmail = searchParams.get("email");
+    const initialLeadId = searchParams.get("lead_id");
+    if (initialEmail) {
+      setEmail(initialEmail);
+    }
+    if (initialLeadId && !Number.isNaN(Number(initialLeadId))) {
+      setLeadId(Number(initialLeadId));
+    }
+  }, [searchParams]);
+
   const submitRegistration = async () => {
     setLoading(true);
     setError("");
@@ -45,7 +59,7 @@ export function RegisterPage({ locale, messages }: Props) {
     try {
       const response = await apiFetch<AuthResponse>("/v1/auth/register", {
         method: "POST",
-        body: JSON.stringify({ full_name: fullName, email, password, locale }),
+        body: JSON.stringify({ full_name: fullName, email, password, locale, lead_id: leadId }),
       });
       if (response.access_token) {
         localStorage.setItem("token", response.access_token);
@@ -80,7 +94,7 @@ export function RegisterPage({ locale, messages }: Props) {
     try {
       const response = await apiFetch<VerifyResponse>("/v1/auth/register/verify", {
         method: "POST",
-        body: JSON.stringify({ challenge_id: challengeId, code: verificationCode }),
+        body: JSON.stringify({ challenge_id: challengeId, code: verificationCode, lead_id: leadId }),
       });
       localStorage.setItem("token", response.access_token);
       router.push(localizePath(locale, "/dashboard"));
@@ -141,6 +155,7 @@ export function RegisterPage({ locale, messages }: Props) {
                   : t(messages, "register.submit", "Create Account")}
               </button>
             </form>
+            <SocialAuthButtons leadId={leadId} locale={locale} messages={messages} mode="register" />
           </>
         ) : (
           <form onSubmit={onSubmitVerification}>

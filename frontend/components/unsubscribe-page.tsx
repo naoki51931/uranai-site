@@ -12,6 +12,7 @@ type Profile = {
   subscription_status: string;
   has_paid_access: boolean;
   billing_enabled: boolean;
+  daily_lucky_opt_in: boolean;
 };
 
 type CheckoutResponse = {
@@ -29,6 +30,7 @@ export function UnsubscribePage({ locale, messages }: Props) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [notificationSaving, setNotificationSaving] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
@@ -76,6 +78,29 @@ export function UnsubscribePage({ locale, messages }: Props) {
     }
   };
 
+  const updateDailyNotificationPreference = async (nextValue: boolean) => {
+    if (!token) {
+      return;
+    }
+    setNotificationSaving(true);
+    setError("");
+    try {
+      const nextProfile = await apiFetch<Profile>(
+        "/v1/auth/notification-preferences",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ daily_lucky_opt_in: nextValue }),
+        },
+        token,
+      );
+      setProfile(nextProfile);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t(messages, "unsubscribe.error", "Failed to update daily delivery setting."));
+    } finally {
+      setNotificationSaving(false);
+    }
+  };
+
   return (
     <main className="shell">
       <div className="panel formCard">
@@ -89,6 +114,28 @@ export function UnsubscribePage({ locale, messages }: Props) {
             ? t(messages, "unsubscribe.active_hint", "Your paid plan is active. Proceed to the portal to cancel renewal.")
             : t(messages, "unsubscribe.inactive_hint", "If renewal is already stopped, you can still open the portal to confirm your billing details.")}
         </p>
+        <div className="notificationPreferenceBox">
+          <strong>{t(messages, "unsubscribe.notifications_title", "Daily lucky action email")}</strong>
+          <p>
+            {t(
+              messages,
+              "unsubscribe.notifications_copy",
+              "You can stop the daily lucky action email here without canceling your paid plan.",
+            )}
+          </p>
+          <label className="checkboxRow" htmlFor="unsubscribe-daily-lucky-opt-in">
+            <input
+              checked={Boolean(profile?.daily_lucky_opt_in)}
+              disabled={!profile || notificationSaving}
+              id="unsubscribe-daily-lucky-opt-in"
+              onChange={(event) => void updateDailyNotificationPreference(event.target.checked)}
+              type="checkbox"
+            />
+            {profile?.daily_lucky_opt_in
+              ? t(messages, "unsubscribe.notifications_on", "Daily lucky action email is enabled")
+              : t(messages, "unsubscribe.notifications_off", "Daily lucky action email is disabled")}
+          </label>
+        </div>
         {error ? <div className="error">{error}</div> : null}
         <div className="ctaRow">
           <button className="button" disabled={loading || !profile} onClick={openPortal} type="button">

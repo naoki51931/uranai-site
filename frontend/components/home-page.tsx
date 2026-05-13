@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import { ActivityFeed } from "@/components/activity-feed";
+import { HomeReadingExperience } from "@/components/home-reading-experience";
+import { getHomeHero, getHomeSummary } from "@/lib/compliance";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
 import { getSeoContent } from "@/lib/seo";
@@ -12,22 +15,17 @@ type Props = {
 
 export function HomePage({ locale, messages }: Props) {
   const seo = getSeoContent(locale);
+  const hero = getHomeHero(locale);
+  const homeSummary = getHomeSummary(locale);
 
   return (
     <main className="shell">
       <section className="hero">
         <div className="panel heroCard">
           <div className="eyebrow">{t(messages, "home.eyebrow", "Moon Arcana")}</div>
-          <h1 className="title">
-            {t(messages, "home.title", "Tarot for the days when instinct matters more than noise.")}
-          </h1>
-          <p className="copy">
-            {t(
-              messages,
-              "home.copy",
-              "A tarot site with history, feedback collection, and continuous learning built in.",
-            )}
-          </p>
+          <h1 className="title">{hero.title}</h1>
+          <p className="copy">{hero.copy}</p>
+          <p className="serviceNotice">{homeSummary}</p>
           <div className="stack">
             <span className="chip">FastAPI</span>
             <span className="chip">Next.js</span>
@@ -73,14 +71,8 @@ export function HomePage({ locale, messages }: Props) {
             </p>
           </div>
           <div className="panel card">
-            <h2>{t(messages, "home.section.reading.title", "Readings")}</h2>
-            <p className="copy">
-              {t(
-                messages,
-                "home.section.reading.copy",
-                "Get a three-card spread with an interpretation for your question.",
-              )}
-            </p>
+            <h2>{hero.readingTitle}</h2>
+            <p className="copy">{hero.readingCopy}</p>
           </div>
           <div className="panel card">
             <h2>{t(messages, "home.section.improve.title", "Improve")}</h2>
@@ -94,6 +86,9 @@ export function HomePage({ locale, messages }: Props) {
           </div>
         </div>
       </section>
+
+      <HomeReadingExperience locale={locale} messages={messages} />
+      <ActivityFeed locale={locale} messages={messages} />
 
       <section className="panel readingPanel">
         <h2>{seo.heading}</h2>

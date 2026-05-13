@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     email_mfa_max_attempts: int = 5
     followup_delay_days: int = 14
     followup_poll_seconds: int = 60
+    daily_lucky_hour_utc: int = 7
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -36,6 +37,12 @@ class Settings(BaseSettings):
     openai_model: str = ""
     ai_model: str = ""
     openai_base_url: str = ""
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    line_oauth_client_id: str = ""
+    line_oauth_client_secret: str = ""
+    apple_oauth_client_id: str = ""
+    apple_oauth_client_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 

@@ -13,50 +13,50 @@ type SeoContent = {
 
 const SEO_CONTENT: Record<Locale, SeoContent> = {
   ja: {
-    title: "無料タロット占い | 3枚引きオンラインリーディング",
+    title: "カードベースのデジタルエンターテインメント | Moon Arcana",
     description:
-      "日本語で使えるオンラインの無料タロット占い。3枚引きで恋愛、仕事、人間関係の悩みに対する解釈をすぐに確認できます。",
-    keywords: ["タロット占い", "無料タロット", "オンライン占い", "3枚引き", "恋愛占い", "仕事占い"],
-    heading: "オンラインで使える無料タロット占い",
+      "Moon Arcana は、カードコンテンツとAIテキストを組み合わせたオンラインのデジタルエンターテインメントサービスです。",
+    keywords: ["Moon Arcana", "カードコンテンツ", "AIテキスト", "デジタルエンターテインメント", "自己理解", "オンラインコンテンツ"],
+    heading: "カードコンテンツとAIテキストを楽しめるオンラインサービス",
     intro:
-      "Moon Arcana は、日本語で使える3枚引きのオンラインタロット占いです。恋愛、仕事、転職、人間関係などの悩みに対して、カード画像付きで解釈を返します。",
+      "Moon Arcana は、恋愛・人間関係・仕事・ライフスタイルなどのテーマに応じて、カードコンテンツとAIによるテキスト解説を楽しめるオンラインのデジタルエンターテインメントサービスです。",
     bulletPoints: [
-      "無料で始められる3枚引きタロット占い",
-      "恋愛や仕事の悩みに使いやすい質問入力",
-      "過去・現在・未来の流れをカード画像付きで表示",
+      "無料で始められるカードベースの読み物",
+      "テーマに応じたAIテキストで自己理解のヒントを得られる",
+      "すべてのコンテンツはWeb上で提供され、物理商品の発送はありません",
     ],
     faq: [
       {
-        question: "このタロット占いは無料ですか？",
-        answer: "はい。初回利用では無料枠でオンラインのタロット占いを試せます。",
+        question: "無料で使えますか？",
+        answer: "はい。無料機能を利用したうえで、必要に応じてプレミアム機能を追加できます。",
       },
       {
-        question: "どんな相談に向いていますか？",
-        answer: "恋愛、仕事、転職、人間関係など、方向性を整理したい相談に向いています。",
+        question: "どのような内容を楽しめますか？",
+        answer: "恋愛、人間関係、仕事、ライフスタイルなどのテーマに応じたカードコンテンツとAIテキストを楽しめます。",
       },
     ],
   },
   en: {
-    title: "Free Tarot Reading Online | 3 Card Tarot Spread",
+    title: "Card-Based Digital Entertainment | Moon Arcana",
     description:
-      "Get a free tarot reading online in English. Use a 3 card tarot spread for love, career, and relationship questions with clear interpretations.",
-    keywords: ["free tarot reading", "online tarot reading", "3 card tarot spread", "love tarot", "career tarot", "tarot reading online"],
-    heading: "Free Online Tarot Reading in English",
+      "Moon Arcana is an online digital entertainment service that combines card-based content with AI-generated text.",
+    keywords: ["Moon Arcana", "card-based content", "AI text", "digital entertainment", "self-reflection", "online content"],
+    heading: "Online card-based content with AI-generated text",
     intro:
-      "Moon Arcana offers a free online tarot reading experience in English. Ask about love, career, relationships, or life direction and receive a 3 card tarot spread with interpretation and card images.",
+      "Moon Arcana provides card-based digital entertainment with AI-generated text across themes such as relationships, work, lifestyle, and personal reflection.",
     bulletPoints: [
-      "Free online tarot reading with a 3 card spread",
-      "Useful for love, career, and relationship questions",
-      "Card images and interpretation for past, present, and future",
+      "Start with free card-based content online",
+      "Get AI-generated text designed for self-reflection and personal review",
+      "All content is delivered digitally through the website with no physical shipping",
     ],
     faq: [
       {
-        question: "Is this tarot reading free?",
-        answer: "Yes. You can start with the free online tarot reading flow and receive a three card spread.",
+        question: "Can I use Moon Arcana for free?",
+        answer: "Yes. You can start with free features and optionally unlock premium content.",
       },
       {
-        question: "What questions work well for tarot?",
-        answer: "Questions about love, career, decisions, and relationship direction work especially well.",
+        question: "What kind of content does Moon Arcana provide?",
+        answer: "It provides card-based content and AI-generated text for themes like relationships, work, lifestyle, and reflection.",
       },
     ],
   },
@@ -258,6 +258,161 @@ export function buildLocaleJsonLd(locale: Locale) {
       "@type": "FAQPage",
       inLanguage: locale,
       mainEntity: seo.faq.map((item) => ({
+        "@type": "Question",
+        name: item.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: item.answer,
+        },
+      })),
+    },
+  ];
+}
+
+export type ReadingTopic = "love" | "career" | "affair" | "money";
+
+type TopicContent = {
+  slug: ReadingTopic;
+  title: string;
+  description: string;
+  heading: string;
+  intro: string;
+  prompts: string[];
+  faq: Array<{ question: string; answer: string }>;
+};
+
+const TOPIC_CONTENT: Record<ReadingTopic, Record<"ja" | "en", TopicContent>> = {
+  love: {
+    ja: {
+      slug: "love",
+      title: "復縁・恋愛の占い",
+      description: "復縁や片思い、関係修復の悩みに絞ったタロット導線です。",
+      heading: "復縁や関係修復に向いた読み口",
+      intro: "感情の温度差、再接近のタイミング、連絡の切り出し方を恋愛テーマに寄せて整理します。",
+      prompts: ["復縁のタイミング", "相手の気持ち", "連絡してよいか"],
+      faq: [
+        { question: "復縁の相談に向いていますか？", answer: "はい。タイミング、温度差、次の一手の整理に向いています。" },
+        { question: "どんな質問がよいですか？", answer: "相手の気持ち、連絡時期、距離の縮め方などが具体的で相性が良いです。" },
+      ],
+    },
+    en: {
+      slug: "love",
+      title: "Love and Reconciliation Reading",
+      description: "A tarot landing page focused on reconciliation, feelings, and timing.",
+      heading: "A reading path tuned for love questions",
+      intro: "Use this entry point for timing, emotional distance, and whether to reconnect.",
+      prompts: ["Should I reach out?", "What are they feeling?", "Is reconciliation realistic?"],
+      faq: [
+        { question: "Is this useful for reconciliation?", answer: "Yes. It is tuned for timing, emotional distance, and next steps." },
+        { question: "What questions fit best?", answer: "Feelings, contact timing, and how to rebuild trust work well." },
+      ],
+    },
+  },
+  career: {
+    ja: {
+      slug: "career",
+      title: "転職・仕事運の占い",
+      description: "転職、職場の人間関係、動く時期に焦点を当てた導線です。",
+      heading: "転職判断と仕事運に向いた読み口",
+      intro: "現職継続か移動か、評価の流れ、交渉のタイミングを仕事テーマで整理します。",
+      prompts: ["転職すべきか", "現職に残るべきか", "評価が動く時期"],
+      faq: [
+        { question: "転職の判断に使えますか？", answer: "はい。残留・移動・準備の優先順位整理に向いています。" },
+        { question: "仕事運では何が見えますか？", answer: "環境の流れ、評価、判断軸、次の一手を整理できます。" },
+      ],
+    },
+    en: {
+      slug: "career",
+      title: "Career and Job Change Reading",
+      description: "A landing page focused on job moves, workplace tension, and timing.",
+      heading: "A reading path for career decisions",
+      intro: "Use this route when deciding whether to stay, move, negotiate, or prepare quietly.",
+      prompts: ["Should I change jobs?", "Should I stay?", "When will momentum shift?"],
+      faq: [
+        { question: "Can this help with job changes?", answer: "Yes. It helps frame whether to stay, move, or prepare." },
+        { question: "What does it focus on?", answer: "Timing, work atmosphere, leverage, and your next move." },
+      ],
+    },
+  },
+  affair: {
+    ja: {
+      slug: "affair",
+      title: "複雑愛・不倫の占い",
+      description: "複雑な関係や秘密の恋に特化した導線です。",
+      heading: "曖昧な関係を整理する読み口",
+      intro: "言葉にしにくい距離感、続けるリスク、切り替えるタイミングを静かに整理します。",
+      prompts: ["相手は本気か", "関係を続けるべきか", "離れるべき時期"],
+      faq: [
+        { question: "複雑な関係にも使えますか？", answer: "はい。感情と現実のずれを整理する用途に向いています。" },
+        { question: "何を聞くとよいですか？", answer: "相手の本気度、続けるコスト、離れる判断軸が有効です。" },
+      ],
+    },
+    en: {
+      slug: "affair",
+      title: "Complicated Relationship Reading",
+      description: "A landing page for secrecy, ambiguity, and emotionally complex situations.",
+      heading: "A reading path for complicated relationships",
+      intro: "Use this route to examine risk, ambiguity, attachment, and when to step back.",
+      prompts: ["Are they serious?", "Should I continue this?", "When should I step back?"],
+      faq: [
+        { question: "Can this handle complicated relationships?", answer: "Yes. It is designed to sort emotional intensity from practical risk." },
+        { question: "What should I ask?", answer: "Ask about seriousness, cost, and whether the relationship is sustainable." },
+      ],
+    },
+  },
+  money: {
+    ja: {
+      slug: "money",
+      title: "金運・お金の占い",
+      description: "金運、支出判断、収入の流れに寄せた導線です。",
+      heading: "金運と判断軸を整える読み口",
+      intro: "支出、投資、収入の変化、守るべきラインをお金テーマで見やすくします。",
+      prompts: ["今は守るべきか", "収入は伸びるか", "使うべきタイミングか"],
+      faq: [
+        { question: "金運の相談に使えますか？", answer: "はい。支出判断や流れの見極めに向いています。" },
+        { question: "何を聞くと具体的ですか？", answer: "支出タイミング、守るライン、収入変化の兆しが具体的です。" },
+      ],
+    },
+    en: {
+      slug: "money",
+      title: "Money and Luck Reading",
+      description: "A landing page focused on spending, income shifts, and money timing.",
+      heading: "A reading path for money questions",
+      intro: "Use this route for spending restraint, income movement, and financial timing.",
+      prompts: ["Should I hold back?", "Will income improve?", "Is this the right time to spend?"],
+      faq: [
+        { question: "Is this useful for money questions?", answer: "Yes. It helps frame spending, timing, and momentum." },
+        { question: "What should I ask?", answer: "Ask about spending timing, financial caution, and income movement." },
+      ],
+    },
+  },
+};
+
+export function getReadingTopicContent(locale: Locale, topic: ReadingTopic): TopicContent {
+  return locale === "ja" ? TOPIC_CONTENT[topic].ja : TOPIC_CONTENT[topic].en;
+}
+
+export function getReadingTopics(): ReadingTopic[] {
+  return Object.keys(TOPIC_CONTENT) as ReadingTopic[];
+}
+
+export function buildReadingTopicJsonLd(locale: Locale, topic: ReadingTopic) {
+  const content = getReadingTopicContent(locale, topic);
+  const pageUrl = localizedUrl(locale, `/reading/${topic}`);
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: content.title,
+      description: content.description,
+      inLanguage: locale,
+      url: pageUrl,
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      inLanguage: locale,
+      mainEntity: content.faq.map((item) => ({
         "@type": "Question",
         name: item.question,
         acceptedAnswer: {

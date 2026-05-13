@@ -48,6 +48,51 @@ def ensure_runtime_schema() -> None:
                     ADD COLUMN premium_explanations_json TEXT NULL
                     """
                 )
+            if "public_share_token" not in existing_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE tarot_readings
+                    ADD COLUMN public_share_token VARCHAR(64) NULL
+                    """
+                )
+                conn.exec_driver_sql(
+                    """
+                    CREATE UNIQUE INDEX ix_tarot_readings_public_share_token
+                    ON tarot_readings (public_share_token)
+                    """
+                )
+
+            user_columns = {
+                row[0]
+                for row in conn.exec_driver_sql(
+                    """
+                    SELECT COLUMN_NAME
+                    FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+                    """
+                )
+            }
+            if "last_login_at" not in user_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN last_login_at DATETIME NULL
+                    """
+                )
+            if "daily_lucky_sent_at" not in user_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN daily_lucky_sent_at DATETIME NULL
+                    """
+                )
+            if "daily_lucky_opt_in" not in user_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN daily_lucky_opt_in BOOLEAN NOT NULL DEFAULT TRUE
+                    """
+                )
 
 
 def get_db():
