@@ -328,6 +328,24 @@ a {
   padding: 28px;
 }
 
+.billingPrompt {
+  border-color: rgba(145, 47, 47, 0.32);
+  background: rgba(255, 248, 242, 0.92);
+}
+
+.billingPrompt h2,
+.billingPrompt p {
+  margin: 0;
+}
+
+.externalTokenForm {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 16px;
+}
+
 .readingCards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -606,6 +624,26 @@ a {
   gap: 12px;
 }
 
+.historyToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.historyPageSizeField {
+  margin-bottom: 0;
+}
+
+.historyPaginationInfo {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
 .historyItem {
   display: grid;
   gap: 6px;
@@ -625,6 +663,14 @@ a {
 
 .historyItem span {
   color: var(--muted);
+}
+
+.historyPagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .premiumExplanation {
@@ -936,6 +982,87 @@ a {
   color: var(--muted);
 }
 
+
+.tarotGuide {
+  display: grid;
+  gap: 28px;
+}
+
+.tarotHeroPanel {
+  padding: 36px;
+}
+
+.tarotHeroPanel h1 {
+  margin: 0 0 16px;
+  font-family: var(--font-display), serif;
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  line-height: 1;
+}
+
+.tarotBackLink {
+  width: fit-content;
+  margin-bottom: 20px;
+}
+
+.tarotInfoGrid,
+.tarotMeaningGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.tarotMeaningGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tarotInfoGrid h2,
+.tarotMeaningGrid h2,
+.tarotCardIndex h3 {
+  margin: 0;
+}
+
+.tarotCardIndex {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tarotIndexCard {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.tarotIndexCard p,
+.tarotMeaningGrid p,
+.tarotRelatedLink span {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.tarotIndexCard .ghostButton {
+  width: fit-content;
+}
+
+.tarotRelatedGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tarotRelatedLink {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+}
+
 @media (max-width: 920px) {
   .hero,
   .hookHeader,
@@ -980,7 +1107,11 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .topicPromptGrid {
+  .topicPromptGrid,
+  .tarotInfoGrid,
+  .tarotMeaningGrid,
+  .tarotCardIndex,
+  .tarotRelatedGrid {
     grid-template-columns: 1fr;
   }
 }

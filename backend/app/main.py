@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, ensure_runtime_schema
-from app.routers import admin, auth, billing, followups, i18n, learning, readings
+from app.routers import admin, auth, billing, external_access, followups, i18n, learning, readings
 from app.runtime import weaviate_store
 from app.services.card_catalog import ensure_card_upload_dir, seed_tarot_cards
 from app.services.followups import followup_worker
@@ -27,6 +27,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(readings.router)
 app.include_router(billing.router)
+app.include_router(external_access.router)
 app.include_router(followups.router)
 app.include_router(i18n.router)
 app.include_router(learning.router)

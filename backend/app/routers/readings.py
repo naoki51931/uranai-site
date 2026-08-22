@@ -22,6 +22,7 @@ from app.schemas import (
     PalmReadingRerunRequest,
     PremiumReadingExplanationResponse,
     PublicShareReadingResponse,
+    ReadingListResponse,
     ReadingRequest,
     ReadingResponse,
 )
@@ -402,22 +403,32 @@ def latest_reading(
     return _build_response(reading, get_monthly_reading_count(db, current_user), has_paid_access(current_user), db, locale)
 
 
-@router.get("", response_model=list[ReadingResponse])
+@router.get("", response_model=ReadingListResponse)
 def list_readings(
     locale: str = Query(default="ja"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     locale = normalize_locale(locale)
-    readings = (
-        db.query(TarotReading)
-        .filter(TarotReading.user_id == current_user.id)
-        .order_by(TarotReading.created_at.desc(), TarotReading.id.desc())
-        .all()
-    )
     paid_access = has_paid_access(current_user)
     monthly_readings_used = get_monthly_reading_count(db, current_user)
-    return [_build_response(reading, monthly_readings_used, paid_access, db, locale) for reading in readings]
+    base_query = db.query(TarotReading).filter(TarotReading.user_id == current_user.id)
+    total = base_query.count()
+    readings = (
+        base_query
+        .order_by(TarotReading.created_at.desc(), TarotReading.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return ReadingListResponse(
+        items=[_build_response(reading, monthly_readings_used, paid_access, db, locale) for reading in readings],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/palm", response_model=PalmReadingResponse)

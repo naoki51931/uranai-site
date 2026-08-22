@@ -79,6 +79,13 @@ def ensure_runtime_schema() -> None:
                     ADD COLUMN last_login_at DATETIME NULL
                     """
                 )
+            if "premium_expires_at" not in user_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN premium_expires_at DATETIME NULL
+                    """
+                )
             if "daily_lucky_sent_at" not in user_columns:
                 conn.exec_driver_sql(
                     """
@@ -91,6 +98,20 @@ def ensure_runtime_schema() -> None:
                     """
                     ALTER TABLE users
                     ADD COLUMN daily_lucky_opt_in BOOLEAN NOT NULL DEFAULT TRUE
+                    """
+                )
+            if "payment_provider" not in user_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN payment_provider VARCHAR(32) NULL
+                    """
+                )
+            if "payment_reference_id" not in user_columns:
+                conn.exec_driver_sql(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN payment_reference_id VARCHAR(255) NULL
                     """
                 )
 

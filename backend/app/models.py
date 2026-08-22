@@ -14,9 +14,10 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     free_readings_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payment_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payment_reference_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     subscription_status: Mapped[str] = mapped_column(String(64), default="inactive", nullable=False)
+    premium_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     daily_lucky_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     daily_lucky_opt_in: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -74,6 +75,24 @@ class SocialAccount(Base):
     provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PaymentTransaction(Base):
+    __tablename__ = "payment_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    merchant_payment_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    provider_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="JPY", nullable=False)
+    status: Mapped[str] = mapped_column(String(64), default="created", nullable=False, index=True)
+    checkout_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class PalmReading(Base):

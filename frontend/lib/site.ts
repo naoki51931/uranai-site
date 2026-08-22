@@ -42,7 +42,7 @@ export function localizedUrlForHost(host: string | null | undefined, locale: str
 
 export function buildLanguageAlternates(path = ""): Record<string, string> {
   const alternates = Object.fromEntries(
-    SUPPORTED_LOCALES.map((locale) => [locale, localizedUrl(locale, path)]),
+    SUPPORTED_LOCALES.map((locale) => [localeToLanguageTag(locale), localizedUrl(locale, path)]),
   ) as Record<string, string>;
   alternates["x-default"] = localizedUrl(DEFAULT_LOCALE, path);
   return alternates;
@@ -50,10 +50,28 @@ export function buildLanguageAlternates(path = ""): Record<string, string> {
 
 export function buildLanguageAlternatesForHost(host: string | null | undefined, path = ""): Record<string, string> {
   const alternates = Object.fromEntries(
-    SUPPORTED_LOCALES.map((locale) => [locale, localizedUrlForHost(host, locale, path)]),
+    SUPPORTED_LOCALES.map((locale) => [localeToLanguageTag(locale), localizedUrlForHost(host, locale, path)]),
   ) as Record<string, string>;
   alternates["x-default"] = localizedUrlForHost(host, DEFAULT_LOCALE, path);
   return alternates;
+}
+
+export function localeToLanguageTag(locale: string): string {
+  const normalizedLocale = normalizeLocale(locale);
+  const languageTags: Record<Locale, string> = {
+    ja: "ja",
+    en: "en",
+    ru: "ru",
+    de: "de",
+    fr: "fr",
+    it: "it",
+    "zh-cn": "zh-CN",
+    "zh-tw": "zh-TW",
+    hi: "hi",
+    pt: "pt",
+    es: "es",
+  };
+  return languageTags[normalizedLocale];
 }
 
 export function getLocaleLabel(locale: Locale): string {

@@ -19,7 +19,7 @@ FastAPI + Next.js + Nginx + MySQL + Redis + Weaviate で構成した、タロッ
 ## 起動
 
 1. `.env.example` を `.env` にコピーして値を設定
-2. 課金機能を使う場合だけ `BILLING_ENABLED=1` にして Stripe 関連の値を設定
+2. 課金機能を使う場合だけ `BILLING_ENABLED=1` にして PayPay 関連の値を設定
 3. フォローアップメールやパスワード再設定メールを使う場合は SMTP 設定を `.env` に入れる
 4. LLM 要約も使う場合は `OPENAI_API_KEY` と `OPENAI_MODEL` を設定
 5. プレミアム解説だけ別モデルにしたい場合は `AI_MODEL` を設定
@@ -28,6 +28,15 @@ FastAPI + Next.js + Nginx + MySQL + Redis + Weaviate で構成した、タロッ
 ```bash
 docker compose --env-file .env up --build
 ```
+
+無課金モードで起動する場合:
+
+```bash
+docker compose --env-file .env -f docker-compose.yml -f docker-compose-free.yml up --build
+```
+
+`docker-compose-free.yml` は `FREE_MODE=1` と `BILLING_ENABLED=0` を backend に渡します。
+`FREE_MODE` に空でない値が入っている間は、課金 API/UI は停止扱いになり、通常は課金時だけ使える詳細表示やプレミアム解説も全ユーザーで使えます。
 
 MySQL は初回起動時に `.env` の `MYSQL_DATABASE` `MYSQL_USER` `MYSQL_PASSWORD` に合わせて
 アプリ用 DB とユーザーを自動作成します。
@@ -50,15 +59,15 @@ docker compose --env-file .env up --build
 検索エンジンに正しい公開 URL を出すため、`NEXT_PUBLIC_SITE_URL` は公開ドメインに合わせて設定してください。
 SSR で翻訳文言を取得するため、`INTERNAL_API_BASE_URL` は通常 `http://backend:8000` のまま使います。
 
-## Stripe Webhook
+## PayPay Webhook
 
-Stripe CLI を使う例:
+PayPay for Developers の管理画面で、Webhook URL に次を設定してください。
 
-```bash
-stripe listen --forward-to localhost/api/v1/billing/webhook
+```text
+https://your-domain.example/api/v1/billing/webhook
 ```
 
-表示された署名シークレットを `.env` の `STRIPE_WEBHOOK_SECRET` に設定してください。
+決済開始には `.env` の `PAYPAY_API_KEY` `PAYPAY_API_SECRET` `PAYPAY_MERCHANT_ID` が必要です。
 
 ## MySQL バックアップを毎日 S3 に保存
 
@@ -91,6 +100,37 @@ BACKUP_CRON_SCHEDULE=0 2 * * *
 
 `backup_mysql_to_s3.sh` は稼働中の `mysql` コンテナに対して `mysqldump` を実行し、`aws s3 cp` で S3 にアップロードします。
 cron のログは `logs/backup.log` に出力されます。
+
+## 毎日 0 時に一枚引きを X に投稿
+
+X Developer Portal でアプリを作成し、投稿対象アカウントの OAuth 1.0a User Context 用キーを発行してください。
+アプリ権限は投稿できる権限に設定します。
+
+1. `.env` に次を設定
+
+```bash
+X_API_KEY=your-x-api-key
+X_API_KEY_SECRET=your-x-api-key-secret
+X_ACCESS_TOKEN=your-x-access-token
+X_ACCESS_TOKEN_SECRET=your-x-access-token-secret
+X_DAILY_TAROT_SEED=uranai-site-ai
+X_POST_CRON_TZ=Asia/Tokyo
+X_POST_CRON_SCHEDULE=0 0 * * *
+```
+
+2. 投稿文を確認
+
+```bash
+./scripts/post_daily_tarot_to_x.py --dry-run
+```
+
+3. cron を登録
+
+```bash
+./scripts/install_x_post_cron.sh
+```
+
+投稿ログは `logs/x-post.log` に出力されます。`X_POST_CRON_TZ=Asia/Tokyo` のままなら、日本時間の毎日 0 時に実行されます。
 
 ## 主なエンドポイント
 
@@ -129,5 +169,7 @@ cron のログは `logs/backup.log` に出力されます。
 
 ## 課金フラグ
 
+- `FREE_MODE` に空でない値が入っているときは無課金モードになり、課金時の機能も無課金で利用できます
 - `BILLING_ENABLED=0` のときは課金 UI と課金 API を停止し、利用制限による `402` も返しません
-- `BILLING_ENABLED=1` のときだけ Stripe Checkout / Portal / webhook を有効化します
+- `BILLING_ENABLED=1` のときだけ PayPay 決済 API と webhook を有効化します
+- PayPay は自動継続課金ではなく、`PREMIUM_PLAN_AMOUNT_JPY=3000` の都度決済で `PREMIUM_ACCESS_DAYS=30` 日分のプレミアム権限を付与します

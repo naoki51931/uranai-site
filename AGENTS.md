@@ -9,3 +9,11 @@
 - バックエンドの `GET /v1/auth/admin/me` と `GET /v1/admin/users` が管理者 Bearer token で `200` を返すか確認する
 - フロント変更が見えない場合は `sudo docker compose up -d --build frontend nginx` で frontend と nginx を更新する
 - ローカル確認は `http://localhost/ja/admin/users` を使う。`https://localhost/...` へ 301 される場合は nginx の古い設定が残っているので再ビルド対象に nginx も含める
+
+## 再ビルド・再起動
+
+基本的に再ビルドして再起動する場合は、リポジトリ直下で次を実行する。
+
+```bash
+sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose-free.yml up -d --build
+```

@@ -23,6 +23,7 @@ type Profile = {
   has_paid_access: boolean;
   billing_enabled: boolean;
   daily_lucky_opt_in: boolean;
+  social_providers: string[];
 };
 
 type ReadingCard = {
@@ -50,8 +51,23 @@ type Reading = {
   has_paid_access: boolean;
 };
 
-type CheckoutResponse = {
-  url: string;
+type ReadingListResponse = {
+  items: Reading[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+type OAuthStartResponse = {
+  authorization_url: string;
+};
+
+type ExternalAccessTokenResponse = {
+  usable: boolean;
+  has_paid_access: boolean;
+  subscription_status: string;
+  premium_expires_at: string | null;
+  message: string;
 };
 
 type PremiumExplanationResponse = {
@@ -91,6 +107,7 @@ const PALM_MODEL_STORAGE_KEY = "palm_reading_model";
 const PREPARING_DELAY_MS = 4200;
 const PREPARING_DELAY_REDUCED_MS = 450;
 const PALM_FOLLOWUP_SUGGESTIONS = ["恋愛運", "仕事運", "結婚運", "金運", "時期", "相性"] as const;
+const HISTORY_PAGE_SIZE_OPTIONS = [30, 50, 100] as const;
 
 type Props = {
   locale: Locale;
@@ -99,6 +116,10 @@ type Props = {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function buildReadingsPath(locale: Locale, limit: number, offset: number) {
+  return `/v1/readings?locale=${encodeURIComponent(locale)}&limit=${limit}&offset=${offset}`;
 }
 
 function truncateText(value: string, maxLength: number) {
@@ -290,6 +311,9 @@ export function DashboardPage({ locale, messages }: Props) {
   const [reading, setReading] = useState<Reading | null>(null);
   const [animatingReading, setAnimatingReading] = useState<Reading | null>(null);
   const [history, setHistory] = useState<Reading[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLimit, setHistoryLimit] = useState<(typeof HISTORY_PAGE_SIZE_OPTIONS)[number]>(50);
+  const [historyOffset, setHistoryOffset] = useState(0);
   const [cardBackImageUrl, setCardBackImageUrl] = useState<string | null>(null);
   const [drawState, setDrawState] = useState<DrawState>("idle");
   const [premiumExplanations, setPremiumExplanations] = useState<Record<string, string | null>>({});
@@ -308,9 +332,14 @@ export function DashboardPage({ locale, messages }: Props) {
   const [palmError, setPalmError] = useState("");
   const [error, setError] = useState("");
   const [premiumError, setPremiumError] = useState("");
+  const [externalToken, setExternalToken] = useState("");
+  const [externalTokenLoading, setExternalTokenLoading] = useState(false);
+  const [externalTokenMessage, setExternalTokenMessage] = useState("");
+  const [externalTokenError, setExternalTokenError] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [socialLinking, setSocialLinking] = useState(false);
 
-  const readingsPath = `/v1/readings?locale=${encodeURIComponent(locale)}`;
+  const readingsPath = buildReadingsPath(locale, historyLimit, historyOffset);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
@@ -353,12 +382,13 @@ export function DashboardPage({ locale, messages }: Props) {
     if (!token) {
       return;
     }
-    void apiFetch<Reading[]>(readingsPath, undefined, token)
-      .then((readings) => {
-        setHistory(readings);
-        setReading((current) => current ?? readings[0] ?? null);
-        setActiveQuestion((current) => current || readings[0]?.question || "");
-        setDrawState((current) => (current === "idle" && readings[0] ? "completed" : current));
+    void apiFetch<ReadingListResponse>(readingsPath, undefined, token)
+      .then((response) => {
+        setHistory(response.items);
+        setHistoryTotal(response.total);
+        setReading((current) => current ?? response.items[0] ?? null);
+        setActiveQuestion((current) => current || response.items[0]?.question || "");
+        setDrawState((current) => (current === "idle" && response.items[0] ? "completed" : current));
       })
       .catch(() => undefined);
   }, [readingsPath, token]);
@@ -411,6 +441,10 @@ export function DashboardPage({ locale, messages }: Props) {
         setPremiumExplanations((current) => ({ ...current, [explanationKey]: result.explanation }));
       })
       .catch((err) => {
+        if (err instanceof ApiRequestError && [402, 403].includes(err.status) && profile?.billing_enabled) {
+          setPremiumError(t(messages, "dashboard.payment_required_error", "Payment is required to use premium features."));
+          return;
+        }
         setPremiumError(err instanceof Error ? err.message : t(messages, "dashboard.premium_error", "Failed to load premium explanation"));
       })
       .finally(() => setPremiumLoading(false));
@@ -435,6 +469,21 @@ export function DashboardPage({ locale, messages }: Props) {
     setProfile(nextProfile);
   };
 
+  const linkLineAccount = async () => {
+    if (!token || profile?.social_providers.includes("line")) {
+      return;
+    }
+    setSocialLinking(true);
+    setError("");
+    try {
+      const response = await apiFetch<OAuthStartResponse>(`/v1/auth/oauth/line/link?locale=${encodeURIComponent(locale)}`, undefined, token);
+      window.location.href = response.authorization_url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t(messages, "dashboard.error", "Request failed"));
+      setSocialLinking(false);
+    }
+  };
+
   const updateDailyNotificationPreference = async (nextValue: boolean) => {
     if (!token) {
       return;
@@ -457,12 +506,16 @@ export function DashboardPage({ locale, messages }: Props) {
     }
   };
 
-  const refreshReadings = async (latestReadingId?: number) => {
+  const refreshReadings = async (latestReadingId?: number, nextOffset?: number, nextLimit?: number) => {
     if (!token) {
       return;
     }
-    const readings = await apiFetch<Reading[]>(readingsPath, undefined, token);
+    const targetOffset = nextOffset ?? historyOffset;
+    const targetLimit = nextLimit ?? historyLimit;
+    const response = await apiFetch<ReadingListResponse>(buildReadingsPath(locale, targetLimit, targetOffset), undefined, token);
+    const readings = response.items;
     setHistory(readings);
+    setHistoryTotal(response.total);
     if (latestReadingId) {
       const latestReading = readings.find((item) => item.id === latestReadingId);
       if (latestReading) {
@@ -524,11 +577,12 @@ export function DashboardPage({ locale, messages }: Props) {
       setAnimatingReading(result);
       setReading(result);
       setDrawState("revealing");
-      await Promise.all([refreshProfile(), refreshReadings(result.id)]);
+      setHistoryOffset(0);
+      await Promise.all([refreshProfile(), refreshReadings(result.id, 0, historyLimit)]);
     } catch (err) {
       setDrawState(reading ? "completed" : "idle");
       if (err instanceof ApiRequestError && err.status === 402 && profile?.billing_enabled) {
-        await startCheckout();
+        setError(t(messages, "dashboard.payment_required_error", "Premium access is required."));
         return;
       }
       setError(err instanceof Error ? err.message : t(messages, "dashboard.error", "Reading failed"));
@@ -625,20 +679,35 @@ export function DashboardPage({ locale, messages }: Props) {
     window.open(`https://x.com/intent/post?${params.toString()}`, "_blank", "noopener,noreferrer");
   };
 
-  const startCheckout = async () => {
-    if (!token) {
+  const verifyExternalToken = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || externalTokenLoading) {
       return;
     }
-    const result = await apiFetch<CheckoutResponse>("/v1/billing/checkout-session", { method: "POST" }, token);
-    window.location.href = result.url;
-  };
-
-  const openPortal = async () => {
-    if (!token) {
-      return;
+    setExternalTokenError("");
+    setExternalTokenMessage("");
+    setExternalTokenLoading(true);
+    try {
+      const result = await apiFetch<ExternalAccessTokenResponse>(
+        "/v1/external-access/moon-arcana/token",
+        {
+          method: "POST",
+          body: JSON.stringify({ token: externalToken.trim() }),
+        },
+        token,
+      );
+      if (!result.usable) {
+        setExternalTokenError(t(messages, "dashboard.external_token_invalid", "This token could not be used."));
+        return;
+      }
+      setExternalToken("");
+      setExternalTokenMessage(t(messages, "dashboard.external_token_success", "Premium access is active."));
+      await refreshProfile();
+    } catch (err) {
+      setExternalTokenError(err instanceof Error ? err.message : t(messages, "dashboard.external_token_error", "Token verification failed"));
+    } finally {
+      setExternalTokenLoading(false);
     }
-    const result = await apiFetch<CheckoutResponse>("/v1/billing/portal-session", { method: "POST" }, token);
-    window.location.href = result.url;
   };
 
   const logout = () => {
@@ -718,7 +787,7 @@ export function DashboardPage({ locale, messages }: Props) {
       setPalmFocus("");
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 402 && profile?.billing_enabled) {
-        await startCheckout();
+        setPalmError(t(messages, "dashboard.payment_required_error", "Premium access is required."));
         return;
       }
       setPalmError(err instanceof Error ? err.message : "Palm reading failed");
@@ -738,6 +807,10 @@ export function DashboardPage({ locale, messages }: Props) {
       const result = await apiFetchPremiumExplanation(reading.id, premiumModel, true);
       setPremiumExplanations((current) => ({ ...current, [explanationKey]: result.explanation }));
     } catch (err) {
+      if (err instanceof ApiRequestError && [402, 403].includes(err.status) && profile?.billing_enabled) {
+        setPremiumError(t(messages, "dashboard.payment_required_error", "Premium access is required."));
+        return;
+      }
       setPremiumError(err instanceof Error ? err.message : t(messages, "dashboard.premium_error", "Failed to load premium explanation"));
     } finally {
       setPremiumLoading(false);
@@ -745,10 +818,10 @@ export function DashboardPage({ locale, messages }: Props) {
   };
 
   const drawDisabled = drawState === "preparing" || drawState === "revealing";
-  const upgradeDisabled = Boolean(profile?.billing_enabled && profile?.has_paid_access);
-  const upgradeLabel = upgradeDisabled
-    ? t(messages, "dashboard.checkout_active", "Subscribed")
-    : t(messages, "dashboard.checkout", "Upgrade");
+  const historyPage = Math.floor(historyOffset / historyLimit) + 1;
+  const historyPageCount = Math.max(1, Math.ceil(historyTotal / historyLimit));
+  const historyRangeStart = historyTotal === 0 ? 0 : historyOffset + 1;
+  const historyRangeEnd = Math.min(historyOffset + history.length, historyTotal);
   const handleAnimationFinished = useCallback(() => {
     setAnimatingReading(null);
     setDrawState("completed");
@@ -800,6 +873,46 @@ export function DashboardPage({ locale, messages }: Props) {
         ) : null}
       </div>
 
+      {profile?.billing_enabled && !profile.has_paid_access ? (
+        <div className="panel readingPanel billingPrompt">
+          <h2>{t(messages, "dashboard.payment_prompt_title", "Premium access has ended")}</h2>
+          <p>
+            {t(
+              messages,
+              "dashboard.payment_prompt_copy",
+              "Purchase a plan of ¥3,000 or more on shosetsu-toukou-site.org, then enter the issued access token here.",
+            )}
+          </p>
+          <div className="ctaRow">
+            <a className="ghostButton" href="https://shosetsu-toukou-site.org/" rel="noopener noreferrer" target="_blank">
+              {t(messages, "dashboard.external_token_link", "Open shosetsu-toukou-site.org")}
+            </a>
+          </div>
+          <form className="externalTokenForm" onSubmit={verifyExternalToken}>
+            <label className="field" htmlFor="external-access-token">
+              <span>{t(messages, "dashboard.external_token_label", "Token from shosetsu-toukou-site.org")}</span>
+              <input
+                autoComplete="off"
+                id="external-access-token"
+                onChange={(event) => setExternalToken(event.target.value)}
+                placeholder={t(messages, "dashboard.external_token_placeholder", "Paste your access token")}
+                type="password"
+                value={externalToken}
+              />
+            </label>
+            {externalTokenError ? <div className="error">{externalTokenError}</div> : null}
+            {externalTokenMessage ? <div className="notice">{externalTokenMessage}</div> : null}
+            <div className="ctaRow">
+              <button className="ghostButton" disabled={externalTokenLoading || externalToken.trim().length < 20} type="submit">
+                {externalTokenLoading
+                  ? t(messages, "dashboard.external_token_loading", "Checking...")
+                  : t(messages, "dashboard.external_token_submit", "Unlock with token")}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       <div className="panel readingPanel">
         <h2>{t(messages, "dashboard.notifications_title", "Daily delivery settings")}</h2>
         <p>
@@ -821,6 +934,23 @@ export function DashboardPage({ locale, messages }: Props) {
             ? t(messages, "dashboard.notifications_on", "Daily lucky action email is enabled")
             : t(messages, "dashboard.notifications_off", "Daily lucky action email is disabled")}
         </label>
+      </div>
+
+      <div className="panel readingPanel">
+        <h2>{t(messages, "dashboard.social_title", "Social login")}</h2>
+        <p>{t(messages, "dashboard.social_copy", "Link LINE so you can sign in with the same account later.")}</p>
+        <button
+          className="ghostButton"
+          disabled={!profile || socialLinking || profile.social_providers.includes("line")}
+          onClick={() => void linkLineAccount()}
+          type="button"
+        >
+          {profile?.social_providers.includes("line")
+            ? t(messages, "dashboard.line_linked", "LINE linked")
+            : socialLinking
+              ? t(messages, "dashboard.line_linking", "Connecting LINE...")
+              : t(messages, "dashboard.line_link", "Connect LINE")}
+        </button>
       </div>
 
       <div className="panel readingPanel">
@@ -1003,19 +1133,6 @@ export function DashboardPage({ locale, messages }: Props) {
               <button className="ghostButton" onClick={() => router.push(localizePath(locale, "/translations"))} type="button">
                 {t(messages, "dashboard.translations", "Translations")}
               </button>
-              {profile?.billing_enabled ? (
-                <>
-                  <button className="ghostButton" disabled={upgradeDisabled} onClick={startCheckout} type="button">
-                    {upgradeLabel}
-                  </button>
-                  <button className="ghostButton" onClick={openPortal} type="button">
-                    {t(messages, "dashboard.portal", "Billing Portal")}
-                  </button>
-                  <Link className="ghostButton" href={localizePath(locale, "/unsubscribe")}>
-                    {t(messages, "dashboard.unsubscribe", "Cancel subscription")}
-                  </Link>
-                </>
-              ) : null}
             </div>
           </form>
         </div>
@@ -1063,13 +1180,6 @@ export function DashboardPage({ locale, messages }: Props) {
               {reading.member_text_locked ? (
                 <div className="hookLockOverlay">
                   <p>{t(messages, "dashboard.member_copy", "Upgrade to unlock the full detailed interpretation.")}</p>
-                  {profile?.billing_enabled ? (
-                    <div className="ctaRow">
-                      <button className="button" disabled={upgradeDisabled} onClick={startCheckout} type="button">
-                        {upgradeLabel}
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1113,28 +1223,76 @@ export function DashboardPage({ locale, messages }: Props) {
       {!isPalmDashboard ? (
         <div className="panel readingPanel">
           <h2>{t(messages, "dashboard.history", "Past Readings")}</h2>
+          <div className="historyToolbar">
+            <label className="premiumModelField historyPageSizeField" htmlFor="history-limit">
+              <span>{t(messages, "dashboard.history_page_size", "Items per page")}</span>
+              <select
+                id="history-limit"
+                onChange={(event) => {
+                  const nextLimit = Number(event.target.value) as (typeof HISTORY_PAGE_SIZE_OPTIONS)[number];
+                  setHistoryLimit(nextLimit);
+                  setHistoryOffset(0);
+                }}
+                value={historyLimit}
+              >
+                {HISTORY_PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="historyPaginationInfo">
+              <span>
+                {t(messages, "dashboard.history_range", "Showing")} {historyRangeStart}-{historyRangeEnd} / {historyTotal}
+              </span>
+              <span>
+                {t(messages, "dashboard.history_page", "Page")} {historyPage} / {historyPageCount}
+              </span>
+            </div>
+          </div>
           {history.length === 0 ? (
             <p>{t(messages, "dashboard.no_history", "No reading history yet.")}</p>
           ) : (
-            <div className="historyList">
-              {history.map((item) => (
+            <>
+              <div className="historyList">
+                {history.map((item) => (
+                  <button
+                    className="historyItem"
+                    key={item.id}
+                    onClick={() => {
+                      setAnimatingReading(null);
+                      setReading(item);
+                      setActiveQuestion(item.question);
+                      setDrawState("completed");
+                      setError("");
+                    }}
+                    type="button"
+                  >
+                    <strong>{formatTimestamp(item.created_at)}</strong>
+                    <span>{item.question}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="historyPagination">
                 <button
-                  className="historyItem"
-                  key={item.id}
-                  onClick={() => {
-                    setAnimatingReading(null);
-                    setReading(item);
-                    setActiveQuestion(item.question);
-                    setDrawState("completed");
-                    setError("");
-                  }}
+                  className="ghostButton"
+                  disabled={historyOffset === 0}
+                  onClick={() => setHistoryOffset((current) => Math.max(0, current - historyLimit))}
                   type="button"
                 >
-                  <strong>{formatTimestamp(item.created_at)}</strong>
-                  <span>{item.question}</span>
+                  {t(messages, "dashboard.history_prev", "Previous")}
                 </button>
-              ))}
-            </div>
+                <button
+                  className="ghostButton"
+                  disabled={historyOffset + historyLimit >= historyTotal}
+                  onClick={() => setHistoryOffset((current) => current + historyLimit)}
+                  type="button"
+                >
+                  {t(messages, "dashboard.history_next", "Next")}
+                </button>
+              </div>
+            </>
           )}
         </div>
       ) : null}

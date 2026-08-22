@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 
-sudo docker compose run --rm certbot renew --webroot --webroot-path /var/www/certbot
-sudo docker compose restart nginx
+COMPOSE_FILES="-f docker-compose.yml -f docker-compose-free.yml"
+
+sudo docker compose --env-file .env ${COMPOSE_FILES} run --rm certbot renew --webroot --webroot-path /var/www/certbot --no-random-sleep-on-renew
+sudo docker compose --env-file .env ${COMPOSE_FILES} restart nginx

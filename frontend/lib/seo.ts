@@ -1,5 +1,5 @@
 import type { Locale } from "@/lib/i18n-core";
-import { localizedUrl } from "@/lib/site";
+import { localeToLanguageTag, localizedUrl } from "@/lib/site";
 
 type SeoContent = {
   title: string;
@@ -13,7 +13,7 @@ type SeoContent = {
 
 const SEO_CONTENT: Record<Locale, SeoContent> = {
   ja: {
-    title: "カードベースのデジタルエンターテインメント | Moon Arcana",
+    title: "カードベースのデジタルエンターテインメント",
     description:
       "Moon Arcana は、カードコンテンツとAIテキストを組み合わせたオンラインのデジタルエンターテインメントサービスです。",
     keywords: ["Moon Arcana", "カードコンテンツ", "AIテキスト", "デジタルエンターテインメント", "自己理解", "オンラインコンテンツ"],
@@ -37,7 +37,7 @@ const SEO_CONTENT: Record<Locale, SeoContent> = {
     ],
   },
   en: {
-    title: "Card-Based Digital Entertainment | Moon Arcana",
+    title: "Card-Based Digital Entertainment",
     description:
       "Moon Arcana is an online digital entertainment service that combines card-based content with AI-generated text.",
     keywords: ["Moon Arcana", "card-based content", "AI text", "digital entertainment", "self-reflection", "online content"],
@@ -231,7 +231,7 @@ export function buildLocaleJsonLd(locale: Locale) {
       "@type": "WebSite",
       name: "Moon Arcana",
       description: seo.description,
-      inLanguage: locale,
+      inLanguage: localeToLanguageTag(locale),
       url: pageUrl,
     },
     {
@@ -239,7 +239,7 @@ export function buildLocaleJsonLd(locale: Locale) {
       "@type": "WebPage",
       name: seo.title,
       description: seo.description,
-      inLanguage: locale,
+      inLanguage: localeToLanguageTag(locale),
       url: pageUrl,
       about: seo.keywords,
     },
@@ -250,13 +250,13 @@ export function buildLocaleJsonLd(locale: Locale) {
       name: seo.title,
       description: seo.description,
       areaServed: "Worldwide",
-      availableLanguage: locale,
+      availableLanguage: localeToLanguageTag(locale),
       url: pageUrl,
     },
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      inLanguage: locale,
+      inLanguage: localeToLanguageTag(locale),
       mainEntity: seo.faq.map((item) => ({
         "@type": "Question",
         name: item.question,
@@ -405,13 +405,13 @@ export function buildReadingTopicJsonLd(locale: Locale, topic: ReadingTopic) {
       "@type": "WebPage",
       name: content.title,
       description: content.description,
-      inLanguage: locale,
+      inLanguage: localeToLanguageTag(locale),
       url: pageUrl,
     },
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      inLanguage: locale,
+      inLanguage: localeToLanguageTag(locale),
       mainEntity: content.faq.map((item) => ({
         "@type": "Question",
         name: item.question,

@@ -214,6 +214,53 @@ def _fetch_social_profile(provider: str, token_payload: dict) -> tuple[str, str,
     return subject, email, name
 
 
+def _generated_social_email(provider: str, provider_user_id: str) -> str:
+    host = urlparse(get_settings().app_base_url).hostname or "example.com"
+    safe_host = host.lstrip(".")
+    return f"{provider}-{provider_user_id}@users.{safe_host}"
+
+
+def _create_social_account(db: Session, user: User, provider: str, provider_user_id: str, email: str) -> None:
+    normalized_email = email.strip().lower() if email else None
+    existing_subject = (
+        db.query(SocialAccount)
+        .filter(SocialAccount.provider == provider, SocialAccount.provider_user_id == provider_user_id)
+        .first()
+    )
+    if existing_subject:
+        existing_subject.user_id = user.id
+        existing_subject.email = normalized_email
+        db.add(existing_subject)
+        return
+
+    existing_provider = (
+        db.query(SocialAccount)
+        .filter(SocialAccount.provider == provider, SocialAccount.user_id == user.id)
+        .first()
+    )
+    if existing_provider:
+        existing_provider.provider_user_id = provider_user_id
+        existing_provider.email = normalized_email
+        db.add(existing_provider)
+        return
+
+    db.add(
+        SocialAccount(
+            user_id=user.id,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            email=normalized_email,
+        )
+    )
+
+
+def _link_social_user(db: Session, user: User, provider: str, provider_user_id: str, email: str) -> User:
+    _create_social_account(db, user, provider, provider_user_id, email)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def _find_or_create_social_user(db: Session, provider: str, provider_user_id: str, email: str, full_name: str) -> User:
     social_account = (
         db.query(SocialAccount)
@@ -229,14 +276,18 @@ def _find_or_create_social_user(db: Session, provider: str, provider_user_id: st
     if normalized_email:
         existing_user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
         if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This email is already registered. Please log in with email first, then link social login later.",
-            )
+            _create_social_account(db, existing_user, provider, provider_user_id, email)
+            db.commit()
+            db.refresh(existing_user)
+            return existing_user
     else:
-        host = urlparse(get_settings().app_base_url).hostname or "example.com"
-        safe_host = host.lstrip(".")
-        normalized_email = f"{provider}-{provider_user_id}@users.{safe_host}"
+        normalized_email = _generated_social_email(provider, provider_user_id)
+        existing_generated_user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+        if existing_generated_user:
+            _create_social_account(db, existing_generated_user, provider, provider_user_id, email)
+            db.commit()
+            db.refresh(existing_generated_user)
+            return existing_generated_user
 
     user = User(
         email=normalized_email,
@@ -245,14 +296,7 @@ def _find_or_create_social_user(db: Session, provider: str, provider_user_id: st
     )
     db.add(user)
     db.flush()
-    db.add(
-        SocialAccount(
-            user_id=user.id,
-            provider=provider,
-            provider_user_id=provider_user_id,
-            email=email.strip().lower() if email else None,
-        )
-    )
+    _create_social_account(db, user, provider, provider_user_id, email)
     db.commit()
     db.refresh(user)
     return user
@@ -654,6 +698,7 @@ def oauth_start(
     locale: str = Query(default="ja"),
     mode: str = Query(default="login"),
     lead_id: int | None = Query(default=None),
+    link_user_id: int | None = None,
 ):
     config = _oauth_provider_config(provider)
     normalized_locale = locale.lower()
@@ -661,7 +706,7 @@ def oauth_start(
     redis_client.setex(
         _oauth_state_key(state),
         600,
-        json.dumps({"locale": normalized_locale, "mode": mode, "lead_id": lead_id}),
+        json.dumps({"locale": normalized_locale, "mode": mode, "lead_id": lead_id, "link_user_id": link_user_id}),
     )
     params = {
         "client_id": config["client_id"],
@@ -687,6 +732,15 @@ def oauth_redirect(
     return RedirectResponse(url=response.authorization_url, status_code=status.HTTP_302_FOUND)
 
 
+@router.get("/oauth/{provider}/link", response_model=OAuthStartResponse)
+def oauth_link_start(
+    provider: str,
+    locale: str = Query(default="ja"),
+    current_user: User = Depends(get_current_user),
+):
+    return oauth_start(provider=provider, locale=locale, mode="link", lead_id=None, link_user_id=current_user.id)
+
+
 @router.get("/oauth/{provider}/callback")
 def oauth_callback(
     provider: str,
@@ -697,12 +751,16 @@ def oauth_callback(
 ):
     locale = "ja"
     lead_id = None
+    mode = "login"
+    link_user_id = None
     if state:
         raw_state = redis_client.get(_oauth_state_key(state))
         if raw_state:
             parsed_state = json.loads(raw_state)
             locale = str(parsed_state.get("locale") or "ja")
             lead_id = parsed_state.get("lead_id")
+            mode = str(parsed_state.get("mode") or "login")
+            link_user_id = parsed_state.get("link_user_id")
             redis_client.delete(_oauth_state_key(state))
     if error:
         return RedirectResponse(url=_frontend_oauth_callback_url(locale, error=error), status_code=status.HTTP_302_FOUND)
@@ -714,7 +772,15 @@ def oauth_callback(
         provider_user_id, email, full_name = _fetch_social_profile(provider, token_payload)
         if not provider_user_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing provider user id")
-        user = _find_or_create_social_user(db, provider, provider_user_id, email, full_name)
+        if mode == "link":
+            if not link_user_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing link user")
+            user = db.query(User).filter(User.id == int(link_user_id)).first()
+            if not user:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            _link_social_user(db, user, provider, provider_user_id, email)
+        else:
+            user = _find_or_create_social_user(db, provider, provider_user_id, email, full_name)
         _claim_guest_lead(db, user, lead_id)
         _touch_user_login(db, user)
         token = create_access_token(str(user.id))
@@ -729,6 +795,13 @@ def oauth_callback(
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     monthly_limit_exempt = is_monthly_limit_exempt(current_user)
     monthly_reading_limit = get_monthly_reading_limit()
+    social_providers = [
+        row[0]
+        for row in db.query(SocialAccount.provider)
+        .filter(SocialAccount.user_id == current_user.id)
+        .order_by(SocialAccount.provider)
+        .all()
+    ]
     return UserProfile(
         id=current_user.id,
         email=current_user.email,
@@ -741,6 +814,7 @@ def me(current_user: User = Depends(get_current_user), db: Session = Depends(get
         has_paid_access=has_paid_access(current_user),
         billing_enabled=is_billing_enabled(),
         daily_lucky_opt_in=current_user.daily_lucky_opt_in,
+        social_providers=social_providers,
     )
 
 

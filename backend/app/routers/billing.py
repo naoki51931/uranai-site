@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user, is_billing_enabled
-from app.models import User
-from app.schemas import CheckoutSessionResponse
-from app.services.stripe_service import construct_event, create_checkout_session, create_portal_session, get_or_create_customer
+from app.deps import get_current_user, has_paid_access, is_billing_enabled
+from app.models import PaymentTransaction, User
+from app.schemas import PaymentStartResponse, PaymentStatusResponse
+from app.services.payment_providers import find_transaction, get_payment_provider
 
 
 router = APIRouter(prefix="/v1/billing", tags=["billing"])
@@ -18,54 +18,55 @@ def _ensure_billing_enabled() -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Billing is disabled")
 
 
-@router.post("/checkout-session", response_model=CheckoutSessionResponse)
-def checkout_session(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    _ensure_billing_enabled()
-    customer_id = get_or_create_customer(current_user)
-    if current_user.stripe_customer_id != customer_id:
-        current_user.stripe_customer_id = customer_id
-        db.commit()
-    return CheckoutSessionResponse(url=create_checkout_session(current_user))
+def _status_response(transaction: PaymentTransaction, user: User) -> PaymentStatusResponse:
+    return PaymentStatusResponse(
+        payment_id=transaction.merchant_payment_id,
+        status=transaction.status,
+        has_paid_access=has_paid_access(user),
+    )
 
 
-@router.post("/portal-session", response_model=CheckoutSessionResponse)
-def portal_session(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.post("/payment", response_model=PaymentStartResponse)
+def create_payment(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _ensure_billing_enabled()
-    customer_id = current_user.stripe_customer_id or get_or_create_customer(current_user)
-    if current_user.stripe_customer_id != customer_id:
-        current_user.stripe_customer_id = customer_id
-        db.commit()
-    return CheckoutSessionResponse(url=create_portal_session(customer_id))
+    payment = get_payment_provider().create_payment(db, current_user)
+    return PaymentStartResponse(
+        url=payment.url,
+        provider=payment.provider,
+        payment_id=payment.payment_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        merchant_alias=payment.merchant_alias,
+        requested_at=payment.requested_at,
+    )
+
+
+@router.get("/payments/{payment_id}", response_model=PaymentStatusResponse)
+def payment_status(payment_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _ensure_billing_enabled()
+    provider = get_payment_provider()
+    transaction = find_transaction(db, provider.provider_name, payment_id)
+    if not transaction or transaction.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
+    transaction = provider.refresh_transaction(db, transaction)
+    db.refresh(current_user)
+    return _status_response(transaction, current_user)
 
 
 @router.post("/webhook")
-async def stripe_webhook(
-    request: Request,
-    stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
-    db: Session = Depends(get_db),
-):
+async def paypay_webhook(request: Request, db: Session = Depends(get_db)):
     _ensure_billing_enabled()
-    payload = await request.body()
-    event = construct_event(payload, stripe_signature)
+    payload = await request.json()
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        data = payload if isinstance(payload, dict) else {}
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        customer_id = session.get("customer")
-        subscription_id = session.get("subscription")
-        if customer_id:
-            user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
-            if user:
-                user.stripe_subscription_id = subscription_id
-                user.subscription_status = "active"
-                db.commit()
+    merchant_payment_id = data.get("merchantPaymentId") or data.get("merchant_payment_id")
+    if not merchant_payment_id:
+        return {"received": True}
 
-    if event["type"] in {"customer.subscription.updated", "customer.subscription.deleted"}:
-        subscription = event["data"]["object"]
-        customer_id = subscription.get("customer")
-        user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
-        if user:
-            user.stripe_subscription_id = subscription.get("id")
-            user.subscription_status = subscription.get("status", "inactive")
-            db.commit()
-
+    provider = get_payment_provider()
+    transaction = find_transaction(db, provider.provider_name, str(merchant_payment_id))
+    if transaction:
+        provider.refresh_transaction(db, transaction)
     return {"received": True}

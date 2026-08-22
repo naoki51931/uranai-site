@@ -13,11 +13,20 @@ class Settings(BaseSettings):
     admin_password: str = "change-me-admin"
     monthly_free_reading_limit: int = 30
     monthly_limit_exempt_emails: str = ""
-    stripe_secret_key: str
-    stripe_webhook_secret: str = ""
-    stripe_price_id: str
     app_base_url: str = "http://localhost"
+    free_mode: str = ""
     billing_enabled: bool = True
+    billing_provider: str = "paypay"
+    premium_plan_amount_jpy: int = 3000
+    premium_access_days: int = 30
+    shosetsu_token_verify_url: str = "https://shosetsu-toukou-site.org/api/external/moon-arcana/token/verify"
+    moon_arcana_origin: str = "https://moon-arcana.com"
+    moon_arcana_external_access_days: int = 30
+    paypay_api_key: str = ""
+    paypay_api_secret: str = ""
+    paypay_merchant_id: str = ""
+    paypay_merchant_alias: str = ""
+    paypay_api_base_url: str = "https://stg-api.sandbox.paypay.ne.jp"
     password_reset_expire_minutes: int = 60
     login_attempt_limit: int = 10
     login_attempt_window_seconds: int = 900

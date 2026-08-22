@@ -6,6 +6,7 @@ import { getHomeHero, getHomeSummary } from "@/lib/compliance";
 import type { Locale, Messages } from "@/lib/i18n-core";
 import { localizePath, t } from "@/lib/i18n-core";
 import { getSeoContent } from "@/lib/seo";
+import { getTarotPageContent } from "@/lib/tarot-content";
 import { localizedPalmUrl } from "@/lib/site";
 
 type Props = {
@@ -17,6 +18,7 @@ export function HomePage({ locale, messages }: Props) {
   const seo = getSeoContent(locale);
   const hero = getHomeHero(locale);
   const homeSummary = getHomeSummary(locale);
+  const tarot = getTarotPageContent(locale);
 
   return (
     <main className="shell">
@@ -99,6 +101,11 @@ export function HomePage({ locale, messages }: Props) {
               <strong>{item}</strong>
             </div>
           ))}
+        </div>
+        <div className="ctaRow">
+          <Link className="ghostButton" href={localizePath(locale, "/tarot")}>
+            {tarot.title}
+          </Link>
         </div>
       </section>
     </main>

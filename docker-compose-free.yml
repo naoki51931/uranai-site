@@ -1,0 +1,5 @@
+services:
+  backend:
+    environment:
+      FREE_MODE: ${FREE_MODE:-1}
+      BILLING_ENABLED: "0"

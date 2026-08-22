@@ -38,6 +38,17 @@ export function ResetPasswordPage({ locale, messages }: Props) {
       setLoading(false);
       return;
     }
+    if (password.length < 8) {
+      setError(
+        t(
+          messages,
+          "password_reset.password_min_length",
+          locale === "ja" ? "パスワードは8文字以上です" : "Password must be at least 8 characters.",
+        ),
+      );
+      setLoading(false);
+      return;
+    }
     if (password !== passwordConfirmation) {
       setError(t(messages, "password_reset.password_mismatch", "Passwords do not match"));
       setLoading(false);
@@ -64,7 +75,7 @@ export function ResetPasswordPage({ locale, messages }: Props) {
       <div className="panel formCard">
         <h1>{t(messages, "password_reset.title", "Set New Password")}</h1>
         <p>{t(messages, "password_reset.copy", "Enter a new password for your account.")}</p>
-        <form onSubmit={onSubmit}>
+        <form onSubmit={onSubmit} noValidate>
           <div className="field">
             <label htmlFor="password">{t(messages, "password_reset.password", "New password")}</label>
             <input

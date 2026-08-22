@@ -73,6 +73,7 @@ class UserProfile(BaseModel):
     has_paid_access: bool
     billing_enabled: bool
     daily_lucky_opt_in: bool
+    social_providers: list[str] = Field(default_factory=list)
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -108,6 +109,13 @@ class ReadingResponse(BaseModel):
     created_at: datetime
     free_readings_used: int
     has_paid_access: bool
+
+
+class ReadingListResponse(BaseModel):
+    items: list[ReadingResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class ActivityFeedItemResponse(BaseModel):
@@ -178,8 +186,32 @@ class FollowupFeedbackResponse(BaseModel):
     llm_summary: str | None = None
 
 
-class CheckoutSessionResponse(BaseModel):
+class PaymentStartResponse(BaseModel):
     url: str
+    provider: str
+    payment_id: str
+    amount: int
+    currency: str
+    merchant_alias: str
+    requested_at: int
+
+
+class PaymentStatusResponse(BaseModel):
+    payment_id: str
+    status: str
+    has_paid_access: bool
+
+
+class ExternalAccessTokenRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+
+
+class ExternalAccessTokenResponse(BaseModel):
+    usable: bool
+    has_paid_access: bool
+    subscription_status: str
+    premium_expires_at: datetime | None = None
+    message: str
 
 
 class AdminProfile(BaseModel):
