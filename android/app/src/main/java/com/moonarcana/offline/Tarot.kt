@@ -32,9 +32,20 @@ object Tarot {
     )
 
     fun draw(count:Int):List<DrawnCard> {
-        val positions = if(count==3) listOf("過去","現在","未来") else listOf("焦点")
+        val positions = when(count) {
+            3 -> listOf("過去","現在","未来")
+            5 -> listOf("現状","障害","隠れた要因","アドバイス","今後の流れ")
+            else -> listOf("焦点")
+        }
         return cards.shuffled().take(count).mapIndexed { i,c -> DrawnCard(c,positions[i],Random.nextBoolean()) }
     }
+
+    fun drawWork():List<DrawnCard> = drawWithPositions(listOf("現状","強み・追い風","課題・障害","取るべき行動","今後の仕事運"))
+
+    fun drawReconciliation():List<DrawnCard> = drawWithPositions(listOf("相手の気持ち","復縁の可能性","障害","あなたの一手","今後の流れ"))
+
+    private fun drawWithPositions(positions:List<String>):List<DrawnCard> =
+        cards.shuffled().take(positions.size).mapIndexed { i,c -> DrawnCard(c,positions[i],Random.nextBoolean()) }
 
     fun localText(question:String, draws:List<DrawnCard>):String = buildString {
         append("「$question」について\n\n")
@@ -43,6 +54,9 @@ object Tarot {
             append(d.card.meaning).append("\n")
             append("キーワード：${d.card.keywords.joinToString(" / ")}\n\n")
         }
-        if(draws.size==3) append("3枚の流れを、過去→現在→未来の順に見ながら、現実の判断材料として受け取ってください。")
+        when(draws.size) {
+            3 -> append("3枚の流れを、過去→現在→未来の順に見ながら、現実の判断材料として受け取ってください。")
+            5 -> append("5枚それぞれの役割とカード同士のつながりを見ながら、現実の判断材料として受け取ってください。")
+        }
     }
 }
