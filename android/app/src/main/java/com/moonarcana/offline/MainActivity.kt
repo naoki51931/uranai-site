@@ -6,7 +6,6 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.*
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 
@@ -29,15 +28,25 @@ class MainActivity:AppCompatActivity(){
     private fun text(s:String,size:Float=16f)=TextView(this).apply{text=s;textSize=size;setTextColor(Color.WHITE);setPadding(0,12,0,12);setLineSpacing(4f,1.05f)}
     private fun button(label:String,action:()->Unit)=MaterialButton(this).apply{text=label;setOnClickListener{action()};setPadding(8,10,8,10)}
     private fun input(hint:String)=EditText(this).apply{this.hint=hint;setHintTextColor(Color.LTGRAY);setTextColor(Color.WHITE);setSingleLine(false);minLines=2}
+    private fun cardImage(d:DrawnCard)=ImageView(this).apply{
+        val resourceName=d.card.slug.replace("-","_")
+        val id=resources.getIdentifier(resourceName,"drawable",packageName)
+        if(id!=0)setImageResource(id)
+        adjustViewBounds=true
+        scaleType=ImageView.ScaleType.FIT_CENTER
+        rotation=if(d.reversed)180f else 0f
+        contentDescription="${d.card.name} ${if(d.reversed) "逆位置" else "正位置"}"
+        layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,720).apply{setMargins(0,18,0,18)}
+    }
 
     private fun showHome(){
         base("Moon Arcana")
-        root.addView(text("端末内でカードを引き、履歴も端末だけに保存します。AI詳細解説を押した時だけOpenRouterへ質問とカード情報を送信します。",17f))
+        root.addView(text("カード画像・抽選・基本解釈・履歴は端末内で動作します。AI詳細解説を押した時だけOpenRouterへ質問とカード情報を送信します。",17f))
         root.addView(button("1枚引き"){showReading(1)})
         root.addView(button("3枚引き（過去・現在・未来）"){showReading(3)})
         root.addView(button("占い履歴（オフライン）"){showHistory()})
         root.addView(button("OpenRouter設定"){showSettings()})
-        root.addView(text("通信先: OpenRouter API のみ。ログイン、MySQL、Redis、Weaviate、課金、SMTP、Web版APIは使用しません。",13f))
+        root.addView(text("通信先: OpenRouter API のみ。カード画像はアプリに同梱済みです。",13f))
     }
     private fun showReading(count:Int){
         base(if(count==1) "1枚引き" else "3枚引き")
@@ -50,7 +59,11 @@ class MainActivity:AppCompatActivity(){
     }
     private fun renderResult(){
         root.removeViews(2,root.childCount-2)
-        current.forEach{d->root.addView(text("${d.position}\n✦ ${d.card.name}  ${if(d.reversed) "逆位置" else "正位置"}\n${d.card.keywords.joinToString(" / ")}\n${d.card.meaning}",18f))}
+        current.forEach{d->
+            root.addView(text("${d.position}\n✦ ${d.card.name}  ${if(d.reversed) "逆位置" else "正位置"}",18f))
+            root.addView(cardImage(d))
+            root.addView(text("${d.card.keywords.joinToString(" / ")}\n${d.card.meaning}",16f))
+        }
         root.addView(text(currentLocal,16f))
         root.addView(button("この結果を端末に保存"){save(null)})
         root.addView(button("AIで詳細解説（OpenRouter通信）"){ai()})
