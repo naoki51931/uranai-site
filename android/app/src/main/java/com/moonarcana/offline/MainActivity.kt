@@ -25,6 +25,7 @@ class MainActivity:AppCompatActivity(){
     private var rightPalmUri:Uri?=null
     private var palmRefresh:(()->Unit)?=null
     private var pickingLeft=true
+    private var isHome=true
     private val palmPicker=registerForActivityResult(ActivityResultContracts.GetContent()){uri->uri?.let{if(pickingLeft)leftPalmUri=it else rightPalmUri=it;palmRefresh?.invoke()}}
     private val bg=Color.rgb(13,9,29)
     private val panel=Color.rgb(28,20,51)
@@ -32,10 +33,12 @@ class MainActivity:AppCompatActivity(){
     private val muted=Color.rgb(198,190,215)
 
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);store=SecretStore(this);db=HistoryDb(this);showHome()}
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed(){if(isHome)super.onBackPressed() else showHome()}
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
     private fun shape(color:Int,radius:Int=22,stroke:Int?=null)=GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat();stroke?.let{setStroke(dp(1),it)}}
     private fun centeredParams(width:Int=ViewGroup.LayoutParams.MATCH_PARENT)=LinearLayout.LayoutParams(width,ViewGroup.LayoutParams.WRAP_CONTENT).apply{gravity=Gravity.CENTER_HORIZONTAL;setMargins(0,dp(8),0,dp(8))}
-    private fun base(title:String,subtitle:String?=null):LinearLayout{val scroll=ScrollView(this).apply{setBackgroundColor(bg);isFillViewport=true};root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.TOP or Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(34),dp(22),dp(50))};scroll.addView(root,ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));setContentView(scroll);root.addView(TextView(this).apply{text="✦  $title  ✦";textSize=29f;setTextColor(gold);gravity=Gravity.CENTER;setTypeface(typeface,Typeface.BOLD);layoutParams=centeredParams()});subtitle?.let{root.addView(text(it,14f,muted).apply{setPadding(dp(12),0,dp(12),dp(14))})};root.addView(View(this).apply{setBackgroundColor(Color.rgb(77,60,105));layoutParams=LinearLayout.LayoutParams(dp(92),dp(1)).apply{gravity=Gravity.CENTER_HORIZONTAL;setMargins(0,dp(4),0,dp(18))}});return root}
+    private fun base(title:String,subtitle:String?=null):LinearLayout{isHome=title=="Moon Arcana";val scroll=ScrollView(this).apply{setBackgroundColor(bg);isFillViewport=true};root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.TOP or Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(34),dp(22),dp(50))};scroll.addView(root,ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));setContentView(scroll);root.addView(TextView(this).apply{text="✦  $title  ✦";textSize=29f;setTextColor(gold);gravity=Gravity.CENTER;setTypeface(typeface,Typeface.BOLD);layoutParams=centeredParams()});subtitle?.let{root.addView(text(it,14f,muted).apply{setPadding(dp(12),0,dp(12),dp(14))})};root.addView(View(this).apply{setBackgroundColor(Color.rgb(77,60,105));layoutParams=LinearLayout.LayoutParams(dp(92),dp(1)).apply{gravity=Gravity.CENTER_HORIZONTAL;setMargins(0,dp(4),0,dp(18))}});return root}
     private fun text(s:String,size:Float=16f,color:Int=Color.WHITE)=TextView(this).apply{text=s;textSize=size;setTextColor(color);gravity=Gravity.CENTER;setPadding(dp(8),dp(10),dp(8),dp(10));setLineSpacing(dp(3).toFloat(),1.08f);layoutParams=centeredParams()}
     private fun sectionTitle(s:String)=text(s,19f,gold).apply{setTypeface(typeface,Typeface.BOLD);setPadding(dp(8),dp(18),dp(8),dp(6))}
     private fun button(label:String,action:()->Unit)=MaterialButton(this).apply{text=label;textSize=16f;isAllCaps=false;gravity=Gravity.CENTER;setTextColor(Color.rgb(25,17,39));backgroundTintList=android.content.res.ColorStateList.valueOf(gold);cornerRadius=dp(18);minHeight=dp(54);setOnClickListener{action()};layoutParams=centeredParams()}
