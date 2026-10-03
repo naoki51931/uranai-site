@@ -3,12 +3,14 @@ package com.moonarcana.offline
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 
@@ -19,6 +21,11 @@ class MainActivity:AppCompatActivity(){
     private var current:List<DrawnCard> = emptyList()
     private var currentQuestion=""
     private var currentLocal=""
+    private var leftPalmUri:Uri?=null
+    private var rightPalmUri:Uri?=null
+    private var palmRefresh:(()->Unit)?=null
+    private var pickingLeft=true
+    private val palmPicker=registerForActivityResult(ActivityResultContracts.GetContent()){uri->uri?.let{if(pickingLeft)leftPalmUri=it else rightPalmUri=it;palmRefresh?.invoke()}}
     private val bg=Color.rgb(13,9,29)
     private val panel=Color.rgb(28,20,51)
     private val gold=Color.rgb(241,194,92)
@@ -37,28 +44,15 @@ class MainActivity:AppCompatActivity(){
     private fun cardImage(d:DrawnCard)=ImageView(this).apply{val id=resources.getIdentifier(d.card.slug.replace("-","_"),"drawable",packageName);if(id!=0)setImageResource(id);adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;rotation=if(d.reversed)180f else 0f;contentDescription="${d.card.name} ${if(d.reversed) "逆位置" else "正位置"}";layoutParams=LinearLayout.LayoutParams(dp(250),dp(430)).apply{gravity=Gravity.CENTER_HORIZONTAL;setMargins(0,dp(12),0,dp(12))}}
     private fun panelView():LinearLayout=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;background=shape(panel,24,Color.rgb(73,56,102));setPadding(dp(16),dp(16),dp(16),dp(16));layoutParams=centeredParams()}
 
-    private fun showHome(){
-        base("Moon Arcana","質問を入力して、占い方を選んでください。")
-        val hero=panelView();hero.addView(text("☾",42f,gold));hero.addView(text("今、いちばん知りたいことは何ですか？",18f));root.addView(hero)
-        root.addView(sectionTitle("YOUR QUESTION"))
-        val q=input("例：今の仕事を続けるべき？\nあの人との関係はどうなる？\n今月の運勢を知りたい")
-        if(currentQuestion.isNotBlank())q.setText(currentQuestion)
-        root.addView(q)
-        fun rememberQuestion(default:String):String{val value=q.text.toString().trim().ifBlank{default};currentQuestion=value;return value}
-        root.addView(sectionTitle("TAROT READING"))
-        root.addView(button("✦  1枚引き"){showReading(1,rememberQuestion("今日の運勢"))})
-        root.addView(button("✦  3枚引き  — 過去・現在・未来"){showReading(3,rememberQuestion("今の流れ"))})
-        root.addView(button("✦  5枚引き  — 総合"){showReading(5,rememberQuestion("総合運"))})
-        root.addView(sectionTitle("SPECIAL SPREAD"))
-        root.addView(secondaryButton("仕事運  5枚引き"){showFiveCardReading("仕事運 5枚引き",rememberQuestion("仕事運"),Tarot::drawWork)})
-        root.addView(secondaryButton("復縁  5枚引き"){showFiveCardReading("復縁 5枚引き",rememberQuestion("復縁について"),Tarot::drawReconciliation)})
-        root.addView(sectionTitle("MY ARCANA"));root.addView(secondaryButton("占い履歴"){showHistory()});root.addView(secondaryButton("AIモデル・OpenRouter設定"){showSettings()});root.addView(text("カードと履歴は端末内に保存。AI詳細解説の時だけOpenRouterへ接続します。",12f,muted))
-    }
+    private fun showHome(){palmRefresh=null;base("Moon Arcana","質問を入力して、占い方を選んでください。");val hero=panelView();hero.addView(text("☾",42f,gold));hero.addView(text("今、いちばん知りたいことは何ですか？",18f));root.addView(hero);root.addView(sectionTitle("YOUR QUESTION"));val q=input("例：今の仕事を続けるべき？\nあの人との関係はどうなる？\n今月の運勢を知りたい");if(currentQuestion.isNotBlank())q.setText(currentQuestion);root.addView(q);fun rememberQuestion(default:String):String{val value=q.text.toString().trim().ifBlank{default};currentQuestion=value;return value};root.addView(sectionTitle("TAROT READING"));root.addView(button("✦  1枚引き"){showReading(1,rememberQuestion("今日の運勢"))});root.addView(button("✦  3枚引き  — 過去・現在・未来"){showReading(3,rememberQuestion("今の流れ"))});root.addView(button("✦  5枚引き  — 総合"){showReading(5,rememberQuestion("総合運"))});root.addView(sectionTitle("SPECIAL READING"));root.addView(secondaryButton("仕事運  5枚引き"){showFiveCardReading("仕事運 5枚引き",rememberQuestion("仕事運"),Tarot::drawWork)});root.addView(secondaryButton("復縁  5枚引き"){showFiveCardReading("復縁 5枚引き",rememberQuestion("復縁について"),Tarot::drawReconciliation)});root.addView(secondaryButton("✋ 手相占い  — 写真からAI鑑定"){currentQuestion=rememberQuestion("手相から今の流れを知りたい");showPalmReading()});root.addView(sectionTitle("MY ARCANA"));root.addView(secondaryButton("占い履歴"){showHistory()});root.addView(secondaryButton("AIモデル・OpenRouter設定"){showSettings()});root.addView(text("タロットは端末内でカードを選択。AI詳細解説と手相画像の鑑定時だけOpenRouterへ接続します。",12f,muted))}
     private fun showReading(count:Int,question:String){val title=when(count){1->"1枚引き";3->"3枚引き";else->"5枚引き（総合）"};currentQuestion=question;base(title,"質問：$currentQuestion");root.addView(button("この質問でカードを引く"){current=Tarot.draw(count);currentLocal=Tarot.localText(currentQuestion,current);renderResult()});root.addView(secondaryButton("← 質問を変更"){showHome()})}
     private fun showFiveCardReading(title:String,question:String,draw:()->List<DrawnCard>){currentQuestion=question;base(title,"質問：$currentQuestion");root.addView(button("この質問で5枚のカードを引く"){current=draw();currentLocal=Tarot.localText(currentQuestion,current);renderResult()});root.addView(secondaryButton("← 質問を変更"){showHome()})}
     private fun renderResult(){root.removeViews(2,root.childCount-2);root.addView(text("「$currentQuestion」",17f,gold));current.forEachIndexed{i,d->val p=panelView();p.addView(text("${i+1}  ·  ${d.position}",15f,gold));p.addView(text(d.card.name,22f).apply{setTypeface(typeface,Typeface.BOLD)});p.addView(text(if(d.reversed) "逆位置" else "正位置",14f,muted));p.addView(cardImage(d));p.addView(text(d.card.keywords.joinToString("  ·  "),13f,gold));p.addView(text(d.card.meaning,15f));root.addView(p)};root.addView(sectionTitle("READING"));root.addView(text(currentLocal,15f));root.addView(button("この結果を端末に保存"){save(null)});root.addView(button("AIで詳細解説  ·  ${modelLabel(store.model)}"){ai()});root.addView(secondaryButton("← ホーム"){showHome()})}
     private fun save(ai:String?){val cards=current.joinToString(" / "){"${it.card.name}(${if(it.reversed) "逆" else "正"})"};db.add(currentQuestion,cards,currentLocal,ai);Toast.makeText(this,"端末に保存しました",Toast.LENGTH_SHORT).show()}
     private fun ai(){if(store.apiKey.isBlank()){Toast.makeText(this,"先にOpenRouter設定でAPIキーを保存してください",Toast.LENGTH_LONG).show();return};val progress=ProgressBar(this).apply{layoutParams=LinearLayout.LayoutParams(dp(48),dp(48)).apply{gravity=Gravity.CENTER_HORIZONTAL;setMargins(0,dp(20),0,dp(20))}};root.addView(progress);Thread{val result=runCatching{OpenRouterClient.interpret(store.apiKey,store.model,currentQuestion,current)};runOnUiThread{root.removeView(progress);result.onSuccess{answer->val p=panelView();p.addView(sectionTitle("AI READING · ${modelLabel(store.model)}"));p.addView(text(answer,16f));root.addView(p);root.addView(button("AI解説込みで保存"){save(answer)})}.onFailure{Toast.makeText(this,it.message?:"OpenRouter通信に失敗しました",Toast.LENGTH_LONG).show()}}}.start()}
+
+    private fun showPalmReading(){base("手相占い","左手・右手の写真を選び、AIで手相を読み解きます。");root.addView(text("質問：$currentQuestion",16f,gold));val area=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;layoutParams=centeredParams()};root.addView(area);fun refresh(){area.removeAllViews();fun hand(label:String,uri:Uri?,left:Boolean){val p=panelView();p.addView(sectionTitle(label));if(uri!=null)p.addView(ImageView(this).apply{setImageURI(uri);adjustViewBounds=true;scaleType=ImageView.ScaleType.CENTER_CROP;layoutParams=LinearLayout.LayoutParams(dp(230),dp(230)).apply{gravity=Gravity.CENTER_HORIZONTAL}}) else p.addView(text("画像未選択",14f,muted));p.addView(secondaryButton(if(uri==null)"写真を選ぶ" else "写真を変更"){pickingLeft=left;palmPicker.launch("image/*")});area.addView(p)};hand("左手",leftPalmUri,true);hand("右手",rightPalmUri,false)};palmRefresh={refresh()};refresh();root.addView(text("片手だけでも鑑定できます。両手を登録すると左右を比較して読み解きます。",13f,muted));root.addView(button("AIで手相を鑑定  ·  ${modelLabel(store.model)}"){runPalmReading()});root.addView(secondaryButton("← ホーム"){showHome()})}
+    private fun runPalmReading(){if(store.apiKey.isBlank()){Toast.makeText(this,"先にOpenRouter設定でAPIキーを保存してください",Toast.LENGTH_LONG).show();return};if(leftPalmUri==null&&rightPalmUri==null){Toast.makeText(this,"手のひらの写真を1枚以上選択してください",Toast.LENGTH_LONG).show();return};val progress=ProgressBar(this).apply{layoutParams=LinearLayout.LayoutParams(dp(48),dp(48)).apply{gravity=Gravity.CENTER_HORIZONTAL;setMargins(0,dp(20),0,dp(20))}};root.addView(progress);Thread{val result=runCatching{val left=leftPalmUri?.let{PalmReading.imageDataUrl(this,it)};val right=rightPalmUri?.let{PalmReading.imageDataUrl(this,it)};OpenRouterClient.interpretPalm(store.apiKey,store.model,currentQuestion,left,right)};runOnUiThread{root.removeView(progress);result.onSuccess{answer->val p=panelView();p.addView(sectionTitle("PALM READING · ${modelLabel(store.model)}"));p.addView(text(answer,16f));root.addView(p)}.onFailure{Toast.makeText(this,it.message?:"手相鑑定に失敗しました",Toast.LENGTH_LONG).show()}}}.start()}
     private fun showHistory(){base("占い履歴","端末に保存したリーディングです。");val rows=db.latest();if(rows.isEmpty())root.addView(text("まだ履歴はありません。",16f,muted)) else rows.forEach{val p=panelView();p.addView(text(it,14f));root.addView(p)};root.addView(secondaryButton("← ホーム"){showHome()})}
 
     private data class ModelOption(val label:String,val id:String)
