@@ -44,15 +44,28 @@ class MainActivity:AppCompatActivity(){
         root.addView(text("カード画像・抽選・基本解釈・履歴は端末内で動作します。AI詳細解説を押した時だけOpenRouterへ質問とカード情報を送信します。",17f))
         root.addView(button("1枚引き"){showReading(1)})
         root.addView(button("3枚引き（過去・現在・未来）"){showReading(3)})
+        root.addView(button("5枚引き（総合）"){showReading(5)})
+        root.addView(button("仕事運 5枚引き"){showFiveCardReading("仕事運 5枚引き","仕事について知りたいことを入力",Tarot::drawWork)})
+        root.addView(button("復縁 5枚引き"){showFiveCardReading("復縁 5枚引き","相手との関係や知りたいことを入力",Tarot::drawReconciliation)})
         root.addView(button("占い履歴（オフライン）"){showHistory()})
         root.addView(button("OpenRouter設定"){showSettings()})
         root.addView(text("通信先: OpenRouter API のみ。カード画像はアプリに同梱済みです。",13f))
     }
     private fun showReading(count:Int){
-        base(if(count==1) "1枚引き" else "3枚引き")
+        val title=when(count){1->"1枚引き";3->"3枚引き";else->"5枚引き（総合）"}
+        base(title)
         val q=input("相談内容を入力（例：今の仕事についてどう動く？）");root.addView(q)
         root.addView(button("カードを引く"){
             currentQuestion=q.text.toString().trim().ifBlank{"今日の運勢"};current=Tarot.draw(count);currentLocal=Tarot.localText(currentQuestion,current)
+            renderResult()
+        })
+        root.addView(button("← ホーム"){showHome()})
+    }
+    private fun showFiveCardReading(title:String,hint:String,draw:()->List<DrawnCard>){
+        base(title)
+        val q=input(hint);root.addView(q)
+        root.addView(button("5枚のカードを引く"){
+            currentQuestion=q.text.toString().trim().ifBlank{title};current=draw();currentLocal=Tarot.localText(currentQuestion,current)
             renderResult()
         })
         root.addView(button("← ホーム"){showHome()})
