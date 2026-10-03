@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.MoonArcana" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="colorPrimary">#7C4DFF</item>
+        <item name="colorSecondary">#F6C453</item>
+        <item name="android:navigationBarColor">#0F0B1F</item>
+        <item name="android:statusBarColor">#0F0B1F</item>
+    </style>
+</resources>
