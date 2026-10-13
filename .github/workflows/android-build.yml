@@ -32,13 +32,40 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
+      - name: Validate signing secrets
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.MOON_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.MOON_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MOON_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MOON_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE" && test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || { echo "::error::Moon Arcana signing secrets are missing"; exit 1; }
+          echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/moon-arcana-release.jks"
+          chmod 600 "$RUNNER_TEMP/moon-arcana-release.jks"
+
+      - name: Build signed release APK
+        if: github.event_name != 'pull_request'
+        env:
+          MOON_KEYSTORE_PATH: ${{ runner.temp }}/moon-arcana-release.jks
+          MOON_KEYSTORE_PASSWORD: ${{ secrets.MOON_KEYSTORE_PASSWORD }}
+          MOON_KEY_ALIAS: ${{ secrets.MOON_KEY_ALIAS }}
+          MOON_KEY_PASSWORD: ${{ secrets.MOON_KEY_PASSWORD }}
+        run: gradle -p android --stacktrace assembleRelease
+
+      - name: Build debug APK for pull requests
+        if: github.event_name == 'pull_request'
         run: gradle -p android --stacktrace assembleDebug
 
       - name: Prepare APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Moon-Arcana-v1.0.0.apk
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            cp android/app/build/outputs/apk/debug/app-debug.apk Moon-Arcana-v1.0.0.apk
+          else
+            cp android/app/build/outputs/apk/release/app-release.apk Moon-Arcana-v1.0.0.apk
+          fi
 
-      - name: Upload debug APK artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: moon-arcana-android-v1.0.0
