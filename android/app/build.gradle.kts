@@ -4,6 +4,14 @@ plugins {
 }
 
 android {
+    signingConfigs {
+        create("moonRelease") {
+            storeFile = file(System.getenv("MOON_KEYSTORE_PATH") ?: "missing-release-keystore.jks")
+            storePassword = System.getenv("MOON_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("MOON_KEY_ALIAS")
+            keyPassword = System.getenv("MOON_KEY_PASSWORD")
+        }
+    }
     namespace = "com.moonarcana.offline"
     compileSdk = 35
 
@@ -26,6 +34,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("moonRelease")
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
