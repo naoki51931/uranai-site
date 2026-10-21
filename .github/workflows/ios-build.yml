@@ -7,6 +7,8 @@ on:
       - 'android/app/src/main/res/drawable/**'
       - '.github/workflows/ios-build.yml'
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: macos-15
@@ -20,6 +22,26 @@ jobs:
         run: cd ios && xcodegen generate
       - name: Build iOS simulator
         run: xcodebuild -project ios/MoonArcana.xcodeproj -scheme MoonArcana -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build unsigned iPhone app
+        run: |
+          xcodebuild -project ios/MoonArcana.xcodeproj -scheme MoonArcana -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p ios/ipa/Payload
+          cp -R ios/build/Build/Products/Release-iphoneos/MoonArcana.app ios/ipa/Payload/
+          cd ios/ipa
+          zip -qry Moon-Arcana-v1.0.0-unsigned.ipa Payload
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moon-Arcana-v1.0.0-unsigned-ipa
+          path: ios/ipa/Moon-Arcana-v1.0.0-unsigned.ipa
+          retention-days: 30
+      - name: Publish unsigned IPA to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v1.0.0 ios/ipa/Moon-Arcana-v1.0.0-unsigned.ipa --clobber
       - name: Upload Xcode project
         uses: actions/upload-artifact@v4
         with:
