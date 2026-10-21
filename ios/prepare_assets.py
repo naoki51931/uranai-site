@@ -17,6 +17,7 @@ icon = source / "moon_arcana_icon_512.png"
 if icon.exists():
     folder = target / "AppIcon.appiconset"
     folder.mkdir(exist_ok=True)
-    (folder / icon.name).write_bytes(icon.read_bytes())
+    import subprocess
+    subprocess.run(["sips", "-z", "1024", "1024", str(icon), "--out", str(folder / icon.name)], check=True)
     (folder / "Contents.json").write_text(json.dumps({"images":[{"filename":icon.name,"idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}),encoding="utf-8")
 print("iOS card and icon assets prepared")
