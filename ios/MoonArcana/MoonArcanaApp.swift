@@ -93,7 +93,7 @@ enum OpenRouter {
         req.httpBody=try JSONSerialization.data(withJSONObject:body)
         let (data,response)=try await URLSession.shared.data(for:req)
         guard let http=response as? HTTPURLResponse,http.statusCode == 200 else {
-            throw NSError(domain:"OpenRouter: "+String(data:data,encoding:.utf8).map{String($0.prefix(300))}!,code:2)
+            throw NSError(domain:"OpenRouter: "+String((String(data:data,encoding:.utf8) ?? "").prefix(300)),code:2)
         }
         let obj=try JSONSerialization.jsonObject(with:data) as? [String:Any]
         let choices=obj?["choices"] as? [[String:Any]]
@@ -272,7 +272,7 @@ struct MainView:View {
             SecureField("OpenRouter API key (sk-or-v1-...)",text:$keyInput).textInputAutocapitalization(.never).padding().background(panel,in:RoundedRectangle(cornerRadius:16))
             primary("APIキーを保存"){if !keyInput.isEmpty{Secrets.apiKey=keyInput;keyInput=""}}
             heading("MODEL")
-            ForEach(models,id:\.1){option in secondary(option.0){state.model=option.1}}
+            ForEach(models.indices,id:\.self){i in secondary(models[i].0){state.model=models[i].1}}
             TextField("その他のモデルID",text:$customModel).textInputAutocapitalization(.never).padding().background(panel,in:RoundedRectangle(cornerRadius:16))
             secondary("カスタムモデルを保存"){if !customModel.isEmpty{state.model=customModel}}
         }
