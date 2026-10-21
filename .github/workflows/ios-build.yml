@@ -1,0 +1,30 @@
+name: iOS Moon Arcana Build
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'android/app/src/main/res/drawable/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Prepare tarot artwork
+        run: python3 ios/prepare_assets.py
+      - name: Generate Xcode project
+        run: cd ios && xcodegen generate
+      - name: Build iOS simulator
+        run: xcodebuild -project ios/MoonArcana.xcodeproj -scheme MoonArcana -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Upload Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moon-Arcana-iOS-Xcode-project
+          path: |
+            ios/MoonArcana.xcodeproj/**
+            ios/MoonArcana/**
+          retention-days: 14
